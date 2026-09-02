@@ -29,7 +29,7 @@
     },
     "sdkVersion": "54.0.0",
     "extra": {
-      "sheetsWebappUrl": "https://script.google.com/macros/s/AKfycbylrjggNIMBHdHdLKRFD8oQJ1HKtaamZRo0Tad9KUsjFqvDV2zNdWzjCS8Gu-dkJNM/exec",
+      "sheetsWebappUrl": "https://script.google.com/macros/s/AKfycbwfyIW8HLe7GmgEP4FTi0qL9q9wM6_6H41RJhiUnP--8z1Acxvw302rYxp9xGlmyIU/exec",
       "eas": {
         "projectId": "bf395f96-301b-4dc6-8bc4-fba4c18197cb"
       }
