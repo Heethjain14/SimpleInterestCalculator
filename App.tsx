@@ -3,17 +3,17 @@ import {
   StyleSheet, Text, View, TouchableOpacity, SafeAreaView,
 } from 'react-native';
 import Constants from 'expo-constants';
-import { StorageProvider } from './context/StorageContext';
-import Sidebar from './components/Sidebar';
-import Dashboard from './components/Dashboard';
-import DuePaymentsList from './components/DuePaymentsList';
-import SimpleInterestCalculator from './components/SimpleInterestCalculator';
-import EmiCalculator from './components/EmiCalculator';
-import BorrowerList from './components/BorrowerList';
-import { Screen, SCREEN_SUBTITLES, NAV_ITEMS } from './navigation/screens';
+import { StorageProvider } from './src/context/StorageContext';
+import Sidebar from './src/components/Sidebar';
+import Dashboard from './src/screens/Dashboard';
+import DuePaymentsList from './src/screens/DuePaymentsList';
+import SimpleInterestCalculator from './src/screens/SimpleInterestCalculator';
+import EmiCalculator from './src/screens/EmiCalculator';
+import BorrowerList from './src/screens/BorrowerList';
+import { Screen, SCREEN_SUBTITLES, NAV_ITEMS } from './src/navigation/screens';
 
 // Re-export for ShareResultCard backward compatibility
-export type { CalculationResult } from './components/SimpleInterestCalculator';
+export type { CalculationResult } from './src/screens/SimpleInterestCalculator';
 
 const _extra = (Constants as any).expoConfig?.extra ?? (Constants as any).manifest?.extra ?? {};
 (globalThis as any).SHEETS_WEBAPP_URL = _extra.sheetsWebappUrl ?? (globalThis as any).SHEETS_WEBAPP_URL ?? '';

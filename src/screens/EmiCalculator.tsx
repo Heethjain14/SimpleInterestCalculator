@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, Alert, ScrollView,
 } from 'react-native';
-import DatePicker from './DatePicker';
+import DatePicker from '../components/DatePicker';
 import { formatCurrency, formatDate } from '../utils/format';
 
 export interface EMIRow {

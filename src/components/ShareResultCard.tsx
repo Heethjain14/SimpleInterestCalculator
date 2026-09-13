@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import ViewShot, { captureRef } from 'react-native-view-shot';
-import { CalculationResult } from './SimpleInterestCalculator';
+import { CalculationResult } from '../screens/SimpleInterestCalculator';
 
 interface Props {
   result: CalculationResult;
