@@ -20,6 +20,7 @@ interface StorageContextValue {
   deleteBorrower: (borrowerId: string) => Promise<void>;
   getBorrower: (id: string) => Borrower | null;
   reload: () => Promise<void>;
+  /** Pulls the full dataset from Google Sheets and overwrites local + AsyncStorage state. */
   refreshFromSheet: () => Promise<RefreshResult>;
 }
 
