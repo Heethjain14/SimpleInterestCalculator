@@ -148,7 +148,7 @@ export const SIDEBAR_WIDTH_EXPORT = SIDEBAR_WIDTH;
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
 

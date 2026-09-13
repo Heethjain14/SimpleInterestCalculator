@@ -6,12 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "ios": {
       "supportsTablet": true
     },
@@ -20,19 +14,29 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      
       "predictiveBackGestureEnabled": false,
       "package": "com.harshit_2005.SimpleInterestCalculator"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "sdkVersion": "54.0.0",
+    "sdkVersion": "57.0.0",
     "extra": {
       "sheetsWebappUrl": "https://script.google.com/macros/s/AKfycbylrjggNIMBHdHdLKRFD8oQJ1HKtaamZRo0Tad9KUsjFqvDV2zNdWzjCS8Gu-dkJNM/exec",
       "eas": {
         "projectId": "bf395f96-301b-4dc6-8bc4-fba4c18197cb"
       }
-    }
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ]
+    ]
   }
 }

@@ -7,7 +7,7 @@ import {
   Alert,
 } from 'react-native';
 import * as Sharing from 'expo-sharing';
-import ViewShot, { captureRef } from 'react-native-view-shot';
+import ViewShot, { captureRef, ViewShotRef } from 'react-native-view-shot';
 import { CalculationResult } from './SimpleInterestCalculator';
 
 interface Props {
@@ -32,7 +32,7 @@ function formatCurrency(amount: number): string {
 /** Renders a shareable PNG card for simple interest results using ViewShot + expo-sharing. */
 export default function ShareResultCard({ result }: Props) {
   const [sharing, setSharing] = useState(false);
-  const cardRef = useRef<View>(null);
+  const cardRef = useRef<ViewShotRef>(null);
 
   const totalAmount = result.principal + result.interest;
 
