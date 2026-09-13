@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-nat
 import { useStorageContext } from '../context/StorageContext';
 import { computePortfolioMetrics } from '../utils/portfolioMetrics';
 import { formatCurrency } from '../utils/format';
-import RefreshButton from './RefreshButton';
+import RefreshButton from '../components/RefreshButton';
 
 interface MetricCardProps {
   label: string;

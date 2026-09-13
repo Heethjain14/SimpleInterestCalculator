@@ -3,8 +3,8 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, Alert, ScrollView,
 } from 'react-native';
-import DatePicker from './DatePicker';
-import ShareResultCard from './ShareResultCard';
+import DatePicker from '../components/DatePicker';
+import ShareResultCard from '../components/ShareResultCard';
 import { formatCurrency } from '../utils/format';
 
 export interface CalculationResult {

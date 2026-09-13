@@ -6,8 +6,8 @@ import {
 import { useStorageContext } from '../context/StorageContext';
 import { getDuePayments, DuePaymentItem } from '../utils/duePayments';
 import { formatCurrency, formatDateIso } from '../utils/format';
-import PaymentRecorder from './PaymentRecorder';
-import RefreshButton from './RefreshButton';
+import PaymentRecorder from '../components/PaymentRecorder';
+import RefreshButton from '../components/RefreshButton';
 import sheetsSync from '../services/sheetsSync';
 import { useNotifications } from '../hooks/useNotifications';
 import { Borrower, Loan, Payment } from '../types';

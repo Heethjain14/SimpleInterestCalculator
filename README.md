@@ -70,21 +70,23 @@ Project ID is configured in `app.json` → `extra.eas.projectId` and `eas.json`.
 SimpleInterestCalculator/
 ├── App.tsx                    # Root app: tabs, Simple/EMI calculators
 ├── index.ts                   # Expo entry point
-├── types.ts                   # Shared TypeScript interfaces
 ├── app.json                   # Expo config (Sheets URL, package name)
 ├── eas.json                   # EAS Build profiles
-├── components/
-│   ├── BorrowerList.tsx       # Client list, search, navigation hub
-│   ├── BorrowerDetail.tsx     # Single borrower: loans, payments, export
-│   ├── BorrowerForm.tsx       # Create/edit borrower + optional loan
-│   ├── PaymentRecorder.tsx    # Modal to record installment payments
-│   ├── DatePicker.tsx         # Cross-platform date picker
-│   └── ShareResultCard.tsx    # Shareable simple-interest result card
-├── hooks/
-│   ├── useStorage.ts          # AsyncStorage CRUD + Sheets sync
-│   └── useNotifications.ts    # Payment reminder stub (no-op)
-├── services/
-│   └── sheetsSync.ts          # Google Sheets web app HTTP client
+├── src/
+│   ├── types.ts               # Shared TypeScript interfaces
+│   ├── screens/
+│   │   ├── BorrowerList.tsx       # Client list, search, navigation hub
+│   │   └── BorrowerDetail.tsx     # Single borrower: loans, payments, export
+│   ├── components/
+│   │   ├── BorrowerForm.tsx    # Create/edit borrower + optional loan
+│   │   ├── PaymentRecorder.tsx # Modal to record installment payments
+│   │   ├── DatePicker.tsx      # Cross-platform date picker
+│   │   └── ShareResultCard.tsx # Shareable simple-interest result card
+│   ├── hooks/
+│   │   ├── useStorage.ts       # AsyncStorage CRUD + Sheets sync
+│   │   └── useNotifications.ts # Payment reminder stub (no-op)
+│   └── services/
+│       └── sheetsSync.ts       # Google Sheets web app HTTP client
 └── docs/
     └── GOOGLE_SHEETS_APPS_SCRIPT.md
 ```
@@ -150,7 +152,7 @@ flowchart TB
 | `index.ts` | Registers `App` with Expo via `registerRootComponent` | Expo runtime |
 | `app.json` | App metadata, Android package, `sheetsWebappUrl` | Expo / EAS |
 | `eas.json` | EAS Build configuration | `eas build` CLI |
-| `types.ts` | `Borrower`, `Loan`, `Payment` interfaces | All client-related modules |
+| `src/types.ts` | `Borrower`, `Loan`, `Payment` interfaces | All client-related modules |
 
 ---
 
@@ -180,7 +182,7 @@ flowchart TB
 
 ### Components
 
-#### `components/DatePicker.tsx`
+#### `src/components/DatePicker.tsx`
 
 **Role:** Reusable date input with platform-specific UI (Android inline picker, iOS modal with Done/Cancel).
 
@@ -199,7 +201,7 @@ flowchart TB
 
 ---
 
-#### `components/ShareResultCard.tsx`
+#### `src/components/ShareResultCard.tsx`
 
 **Role:** Renders a styled result card for simple interest and captures it as PNG for sharing via `expo-sharing`.
 
@@ -213,7 +215,7 @@ flowchart TB
 
 ---
 
-#### `components/BorrowerList.tsx`
+#### `src/screens/BorrowerList.tsx`
 
 **Role:** Client list hub — search, add, refresh from Sheets, delete, and navigate to detail/form views.
 
@@ -236,7 +238,7 @@ BorrowerList
 
 ---
 
-#### `components/BorrowerDetail.tsx`
+#### `src/screens/BorrowerDetail.tsx`
 
 **Role:** Full borrower profile — summary stats, expandable loan cards, payment schedule tables, CSV export, payment recording.
 
@@ -252,7 +254,7 @@ BorrowerList
 
 ---
 
-#### `components/BorrowerForm.tsx`
+#### `src/components/BorrowerForm.tsx`
 
 **Role:** Create or edit a borrower profile; optionally attach a new loan with auto-generated payment schedule.
 
@@ -275,7 +277,7 @@ BorrowerList
 
 ---
 
-#### `components/PaymentRecorder.tsx`
+#### `src/components/PaymentRecorder.tsx`
 
 **Role:** Bottom-sheet modal to record the next unpaid installment.
 
@@ -291,7 +293,7 @@ BorrowerList
 
 ### Hooks
 
-#### `hooks/useStorage.ts`
+#### `src/hooks/useStorage.ts`
 
 **Role:** Central data layer — persists borrowers to AsyncStorage and syncs with Google Sheets.
 
@@ -311,7 +313,7 @@ BorrowerList
 
 ---
 
-#### `hooks/useNotifications.ts`
+#### `src/hooks/useNotifications.ts`
 
 **Role:** Stub for future payment reminder notifications. Currently returns no-op functions.
 
@@ -324,7 +326,7 @@ BorrowerList
 
 ### Services
 
-#### `services/sheetsSync.ts`
+#### `src/services/sheetsSync.ts`
 
 **Role:** HTTP client for the Google Apps Script web app.
 
@@ -346,7 +348,7 @@ See [docs/GOOGLE_SHEETS_APPS_SCRIPT.md](./docs/GOOGLE_SHEETS_APPS_SCRIPT.md) for
 
 ---
 
-### `types.ts` — Data Model
+### `src/types.ts` — Data Model
 
 ```
 Borrower

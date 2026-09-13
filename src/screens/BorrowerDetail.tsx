@@ -8,8 +8,8 @@ import * as Sharing from 'expo-sharing';
 import { Borrower, Loan } from '../types';
 import { useStorage } from '../hooks/useStorage';
 import { useNotifications } from '../hooks/useNotifications';
-import BorrowerForm from './BorrowerForm';
-import PaymentRecorder from './PaymentRecorder';
+import BorrowerForm from '../components/BorrowerForm';
+import PaymentRecorder from '../components/PaymentRecorder';
 
 interface Props {
   borrower: Borrower;

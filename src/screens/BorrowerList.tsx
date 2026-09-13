@@ -6,9 +6,9 @@ import {
 import { Borrower } from '../types';
 import { useStorage } from '../hooks/useStorage';
 import { useNotifications } from '../hooks/useNotifications';
-import RefreshButton from './RefreshButton';
+import RefreshButton from '../components/RefreshButton';
 import BorrowerDetail from './BorrowerDetail';
-import BorrowerForm from './BorrowerForm';
+import BorrowerForm from '../components/BorrowerForm';
 interface Props {
   /** Pre-select a borrower when navigating from Due Payments or Dashboard. */
   initialSelectedId?: string | null;
