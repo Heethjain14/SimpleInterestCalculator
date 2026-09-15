@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import DatePicker from '../components/DatePicker';
 import { formatCurrency, formatDate } from '../utils/format';
+import { colors, radii } from '../theme/tokens';
 
 export interface EMIRow {
   installmentNo: number;
@@ -118,12 +119,12 @@ export default function EmiCalculator() {
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Principal Amount</Text>
           <TextInput style={styles.input} value={emiPrincipal} onChangeText={setEmiPrincipal}
-            placeholder="Enter principal amount" placeholderTextColor="#aaa" keyboardType="numeric" />
+            placeholder="Enter principal amount" placeholderTextColor={colors.ink3} keyboardType="numeric" />
         </View>
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Interest Rate (% per month)</Text>
           <TextInput style={styles.input} value={emiRate} onChangeText={setEmiRate}
-            placeholder="Enter monthly interest rate" placeholderTextColor="#aaa" keyboardType="numeric" />
+            placeholder="Enter monthly interest rate" placeholderTextColor={colors.ink3} keyboardType="numeric" />
           <View style={styles.rateButtonsRow}>
             {RATE_PRESETS.map(r => {
               const label = String(r);
@@ -142,26 +143,28 @@ export default function EmiCalculator() {
             </TouchableOpacity>
           </View>
         </View>
-        <Text style={styles.label}>EMI Mode</Text>
-        <View style={styles.modeRow}>
-          {(['cutting', 'adding'] as const).map(mode => (
-            <TouchableOpacity
-              key={mode}
-              style={[styles.modeButton, emiMode === mode && styles.modeButtonSelected]}
-              onPress={() => setEmiMode(mode)}
-            >
-              <Text style={[styles.modeButtonText, emiMode === mode && styles.modeButtonTextSelected]}>
-                {mode === 'cutting' ? 'Cutting' : 'Adding'}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>EMI Mode</Text>
+          <View style={styles.modeRow}>
+            {(['cutting', 'adding'] as const).map(mode => (
+              <TouchableOpacity
+                key={mode}
+                style={[styles.modeButton, emiMode === mode && styles.modeButtonSelected]}
+                onPress={() => setEmiMode(mode)}
+              >
+                <Text style={[styles.modeButtonText, emiMode === mode && styles.modeButtonTextSelected]}>
+                  {mode === 'cutting' ? 'Cutting' : 'Adding'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         <DatePicker label="Start Date" value={emiStartDate} onChange={handleEmiStartDateChange} placeholder="Select start date" />
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Tenure (months)</Text>
           <TextInput style={styles.input} value={emiTenure} onChangeText={handleTenureChange}
-            placeholder="Enter tenure in months" placeholderTextColor="#aaa" keyboardType="numeric" />
+            placeholder="Enter tenure in months" placeholderTextColor={colors.ink3} keyboardType="numeric" />
         </View>
         {emiEndDate && (
           <View style={styles.inputGroup}>
@@ -183,41 +186,41 @@ export default function EmiCalculator() {
       </View>
 
       {emiSchedule && (
-        <View style={styles.scheduleCard}>
-          <Text style={styles.scheduleTitle}>EMI Schedule</Text>
-          <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderText, styles.colNo]}>#</Text>
-            <Text style={[styles.tableHeaderText, styles.colDate]}>Date</Text>
-            <Text style={[styles.tableHeaderText, styles.colPrincipal]}>Principal</Text>
-            <Text style={[styles.tableHeaderText, styles.colInterest]}>Interest</Text>
-          </View>
-          {emiSchedule.map((row, index) => (
-            <View key={row.installmentNo} style={[styles.tableRow, index % 2 === 0 && styles.tableRowEven]}>
-              <Text style={[styles.tableCell, styles.colNo]}>{row.installmentNo}</Text>
-              <Text style={[styles.tableCell, styles.colDate]}>{formatDate(row.date)}</Text>
-              <Text style={[styles.tableCell, styles.colPrincipal]}>₹{formatCurrency(row.remainingPrincipal)}</Text>
-              <Text style={[styles.tableCell, styles.colInterest, styles.interestValue]}>₹{formatCurrency(row.monthlyInterest)}</Text>
+        <>
+          <View style={styles.tableWrap}>
+            <View style={styles.tableHeader}>
+              <Text style={[styles.th, styles.colNo]}>#</Text>
+              <Text style={[styles.th, styles.colDate]}>Date</Text>
+              <Text style={[styles.th, styles.colAmt]}>Principal</Text>
+              <Text style={[styles.th, styles.colAmt]}>Interest</Text>
             </View>
-          ))}
-          <View style={styles.summaryRow}>
+            {emiSchedule.map((row, index) => (
+              <View key={row.installmentNo} style={[styles.tableRow, index % 2 === 0 && styles.tableRowEven]}>
+                <Text style={[styles.td, styles.colNo]}>{row.installmentNo}</Text>
+                <Text style={[styles.td, styles.colDate]}>{formatDate(row.date)}</Text>
+                <Text style={[styles.td, styles.colAmt]}>₹{formatCurrency(row.remainingPrincipal)}</Text>
+                <Text style={[styles.td, styles.colAmt, styles.interestValue]}>₹{formatCurrency(row.monthlyInterest)}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.summaryCard}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>Principal</Text>
               <Text style={styles.summaryValue}>₹{formatCurrency(parseFloat(emiPrincipal))}</Text>
             </View>
-            <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Total Interest</Text>
-              <Text style={[styles.summaryValue, styles.summaryInterest]}>₹{formatCurrency(totalInterest)}</Text>
+              <Text style={styles.summaryLabel}>Total interest</Text>
+              <Text style={[styles.summaryValue, { color: colors.accent }]}>₹{formatCurrency(totalInterest)}</Text>
             </View>
-            <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>{emiMode === 'adding' ? 'Total Payable' : 'Total Due'}</Text>
-              <Text style={[styles.summaryValue, styles.summaryTotal]}>
+              <Text style={styles.summaryLabel}>{emiMode === 'adding' ? 'Total payable' : 'Total due'}</Text>
+              <Text style={[styles.summaryValue, { color: colors.success }]}>
                 ₹{formatCurrency(emiMode === 'adding' ? parseFloat(emiPrincipal) + totalInterest : parseFloat(emiPrincipal))}
               </Text>
             </View>
           </View>
-        </View>
+        </>
       )}
     </ScrollView>
   );
@@ -226,63 +229,65 @@ export default function EmiCalculator() {
 const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: 20, paddingBottom: 30 },
   form: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 20, marginBottom: 20,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1, shadowRadius: 3.84, elevation: 5,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    marginBottom: 16,
+    gap: 14,
   },
-  inputGroup: { marginBottom: 20 },
-  label: { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 },
+  inputGroup: { gap: 7 },
+  label: { fontSize: 12.5, fontWeight: '700', color: colors.ink2 },
   input: {
-    borderWidth: 1, borderColor: '#ddd', borderRadius: 8,
-    padding: 12, fontSize: 16, backgroundColor: '#fafafa', color: '#333',
+    borderWidth: 1, borderColor: colors.border, borderRadius: radii.md,
+    padding: 12, fontSize: 14.5, backgroundColor: colors.surface, color: colors.ink,
   },
   readonlyField: {
-    borderWidth: 1, borderColor: '#c8e6c9', borderRadius: 8, padding: 12,
-    backgroundColor: '#f1f8f1', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    borderWidth: 1, borderColor: colors.accentSoftBorder, borderRadius: radii.md, padding: 12,
+    backgroundColor: colors.accentSoft, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
-  readonlyText: { fontSize: 16, color: '#2e7d32', fontWeight: '600' },
+  readonlyText: { fontSize: 14.5, color: colors.accent, fontWeight: '700' },
   readonlyBadge: {
-    fontSize: 11, color: '#fff', backgroundColor: '#43a047',
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, fontWeight: '700',
+    fontSize: 10.5, color: '#fff', backgroundColor: colors.accent,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: radii.pill, fontWeight: '700',
   },
-  modeRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  modeRow: { flexDirection: 'row', gap: 8 },
   modeButton: {
-    flex: 1, borderRadius: 10, borderWidth: 1, borderColor: '#d1d5db',
-    paddingVertical: 10, alignItems: 'center', backgroundColor: '#f8fafc',
+    flex: 1, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border,
+    paddingVertical: 11, alignItems: 'center', backgroundColor: colors.surface,
   },
-  modeButtonSelected: { backgroundColor: '#e0f2fe', borderColor: '#38bdf8' },
-  modeButtonText: { fontSize: 14, color: '#374151', fontWeight: '600' },
-  modeButtonTextSelected: { color: '#0369a1' },
-  rateButtonsRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10, gap: 10 },
-  rateButton: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: '#ddd', backgroundColor: '#f7f7f7' },
-  rateButtonSelected: { backgroundColor: '#007AFF', borderColor: '#007AFF' },
-  rateButtonText: { fontSize: 14, color: '#333', fontWeight: '600' },
+  modeButtonSelected: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  modeButtonText: { fontSize: 13.5, color: colors.ink2, fontWeight: '700' },
+  modeButtonTextSelected: { color: colors.accent },
+  rateButtonsRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, gap: 8 },
+  rateButton: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  rateButtonSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
+  rateButtonText: { fontSize: 13, color: colors.ink2, fontWeight: '700' },
   rateButtonTextSelected: { color: '#fff' },
-  buttonContainer: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
-  calculateButton: { backgroundColor: '#007AFF', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, flex: 1, marginRight: 10 },
-  calculateButtonText: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
-  clearButton: { backgroundColor: '#FF3B30', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, flex: 1, marginLeft: 10 },
-  clearButtonText: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
-  scheduleCard: {
-    backgroundColor: '#fff', borderRadius: 12, overflow: 'hidden', marginBottom: 20,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3.84, elevation: 5,
+  buttonContainer: { flexDirection: 'row', gap: 8 },
+  calculateButton: { backgroundColor: colors.accent, paddingVertical: 12, borderRadius: radii.md, flex: 1 },
+  calculateButtonText: { color: '#fff', fontSize: 14.5, fontWeight: '700', textAlign: 'center' },
+  clearButton: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingVertical: 12, borderRadius: radii.md, flex: 1 },
+  clearButtonText: { color: colors.ink, fontSize: 14.5, fontWeight: '700', textAlign: 'center' },
+  tableWrap: {
+    backgroundColor: colors.surface, borderRadius: radii.lg, overflow: 'hidden', marginBottom: 12,
+    borderWidth: 1, borderColor: colors.border,
   },
-  scheduleTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', padding: 16, textAlign: 'center', borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  tableHeader: { flexDirection: 'row', backgroundColor: '#007AFF', paddingVertical: 10, paddingHorizontal: 8 },
-  tableHeaderText: { fontSize: 12, fontWeight: '700', color: '#fff', textAlign: 'center' },
-  tableRow: { flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
-  tableRowEven: { backgroundColor: '#fafafa' },
-  tableCell: { fontSize: 12, color: '#333', textAlign: 'center' },
-  interestValue: { color: '#007AFF', fontWeight: '600' },
-  colNo: { width: 28 },
+  tableHeader: { flexDirection: 'row', backgroundColor: colors.accentSoft, paddingVertical: 9, paddingHorizontal: 8 },
+  th: { fontSize: 11, fontWeight: '700', color: colors.accent, textAlign: 'center' },
+  tableRow: { flexDirection: 'row', paddingVertical: 9, paddingHorizontal: 8, borderTopWidth: 1, borderTopColor: colors.border },
+  tableRowEven: { backgroundColor: colors.bg },
+  td: { fontSize: 12, color: colors.ink, textAlign: 'center' },
+  interestValue: { color: colors.ink2 },
+  colNo: { width: 26 },
   colDate: { flex: 2, textAlign: 'left' },
-  colPrincipal: { flex: 2, textAlign: 'right' },
-  colInterest: { flex: 2, textAlign: 'right' },
-  summaryRow: { flexDirection: 'row', backgroundColor: '#f8f9fa', borderTopWidth: 2, borderTopColor: '#007AFF', padding: 16 },
+  colAmt: { flex: 2, textAlign: 'right' },
+  summaryCard: {
+    flexDirection: 'row', backgroundColor: colors.surface, borderRadius: radii.xl,
+    borderWidth: 1, borderColor: colors.border, padding: 16, marginBottom: 20,
+  },
   summaryItem: { flex: 1, alignItems: 'center' },
-  summaryDivider: { width: 1, backgroundColor: '#ddd', marginVertical: 4 },
-  summaryLabel: { fontSize: 11, color: '#888', marginBottom: 4, fontWeight: '500' },
-  summaryValue: { fontSize: 13, fontWeight: '700', color: '#333' },
-  summaryInterest: { color: '#007AFF' },
-  summaryTotal: { color: '#34C759' },
+  summaryLabel: { fontSize: 10.5, color: colors.ink2, marginBottom: 4, fontWeight: '600' },
+  summaryValue: { fontSize: 13, fontWeight: '700', color: colors.ink },
 });

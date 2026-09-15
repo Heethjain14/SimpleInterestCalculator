@@ -10,6 +10,16 @@ import { useStorage } from '../hooks/useStorage';
 import { useNotifications } from '../hooks/useNotifications';
 import BorrowerForm from '../components/BorrowerForm';
 import PaymentRecorder from '../components/PaymentRecorder';
+import { isPaymentOverdue } from '../utils/duePayments';
+import { colors, radii } from '../theme/tokens';
+
+function daysOverdue(dueDateIso: string): number {
+  const due = new Date(dueDateIso);
+  due.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.floor((today.getTime() - due.getTime()) / 86_400_000));
+}
 
 interface Props {
   borrower: Borrower;
@@ -165,7 +175,7 @@ export default function BorrowerDetail({ borrower, onBack, onEdit, onSave }: Pro
       <ScrollView contentContainerStyle={styles.container}>
       {/* Back */}
       <TouchableOpacity style={styles.backBtn} onPress={onBack}>
-        <Text style={styles.backBtnText}>← Back</Text>
+        <Text style={styles.backBtnText}>‹ Back</Text>
       </TouchableOpacity>
 
       {/* Profile card */}
@@ -189,22 +199,22 @@ export default function BorrowerDetail({ borrower, onBack, onEdit, onSave }: Pro
       {/* Summary */}
       <View style={styles.summaryRow}>
         <View style={styles.summaryBox}>
-          <Text style={styles.summaryLabel}>Active Loans</Text>
+          <Text style={styles.summaryLabel}>Loans</Text>
           <Text style={styles.summaryValue}>{current.loans.length}</Text>
         </View>
         <View style={styles.summaryBox}>
-          <Text style={styles.summaryLabel}>Total Principal</Text>
+          <Text style={styles.summaryLabel}>Principal</Text>
           <Text style={styles.summaryValue}>₹{formatCurrency(totalPrincipal)}</Text>
         </View>
         <View style={styles.summaryBox}>
-          <Text style={styles.summaryLabel}>Total Interest</Text>
-          <Text style={[styles.summaryValue, { color: '#007AFF' }]}>₹{formatCurrency(totalInterest)}</Text>
+          <Text style={styles.summaryLabel}>Interest</Text>
+          <Text style={[styles.summaryValue, { color: colors.accent }]}>₹{formatCurrency(totalInterest)}</Text>
         </View>
       </View>
 
       {/* Loans */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Loans</Text>
+        <Text style={styles.sectionTitle}>LOANS</Text>
         <TouchableOpacity style={styles.addLoanBtn} onPress={() => setShowAddLoan(true)}>
           <Text style={styles.addLoanBtnText}>+ Add Loan</Text>
         </TouchableOpacity>
@@ -220,6 +230,8 @@ export default function BorrowerDetail({ borrower, onBack, onEdit, onSave }: Pro
           const payments = loan.payments || [];
           const totalLoanInterest = payments.reduce((s, p) => s + p.interest, 0);
           const paidAmount = payments.reduce((s, p) => s + (p.paidAmount || 0), 0);
+          const totalPayable = loan.repaymentMode === 'adding' ? loan.principal + totalLoanInterest : loan.principal;
+          const progress = totalPayable > 0 ? Math.min(1, paidAmount / totalPayable) : 0;
 
           return (
             <View key={loan.id} style={styles.loanCard}>
@@ -239,15 +251,19 @@ export default function BorrowerDetail({ borrower, onBack, onEdit, onSave }: Pro
                   <Text style={styles.loanMeta}>
                     {loan.interestRate}% · {loan.tenure} months · {loan.repaymentMode === 'adding' ? 'Adding' : 'Cutting'} EMI · from {formatDate(loan.startDate)}
                   </Text>
-                  <Text style={styles.loanDue}>
-                    Paid: ₹{formatCurrency(paidAmount)} / Total: ₹{formatCurrency(loan.repaymentMode === 'adding' ? loan.principal + totalLoanInterest : loan.principal)}
-                  </Text>
+                  <View style={styles.progressRow}>
+                    <View style={styles.progressTrack}>
+                      <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+                    </View>
+                    <Text style={styles.progressLabel}>₹{formatCurrency(paidAmount)} / ₹{formatCurrency(totalPayable)}</Text>
+                  </View>
                 </View>
                 <Text style={styles.expandIcon}>{isExpanded ? '▲' : '▼'}</Text>
               </TouchableOpacity>
 
               {isExpanded && (
                 <View style={styles.scheduleContainer}>
+                  <Text style={styles.subsectionLabel}>INSTALLMENT SCHEDULE</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={styles.tableScroll}>
                     <View style={styles.tableBlock}>
                       <View style={styles.tableHeader}>
@@ -270,55 +286,53 @@ export default function BorrowerDetail({ borrower, onBack, onEdit, onSave }: Pro
                     </View>
                   </ScrollView>
 
-                  <View style={styles.paymentTrackerHeader}>
-                    <Text style={styles.paymentTrackerTitle}>Payment Tracking</Text>
-                    <View style={styles.actionRow}>
-                      <TouchableOpacity style={styles.shareBtn} onPress={() => handleShareLoanStatement(loan)}>
-                        <Text style={styles.shareBtnText}>Export CSV</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.recordPaymentBtn} onPress={() => setPaymentRecorderLoan(loan)}>
-                        <Text style={styles.recordPaymentBtnText}>+ Record Payment</Text>
-                      </TouchableOpacity>
-                    </View>
+                  <Text style={styles.subsectionLabel}>PAYMENT TRACKING</Text>
+                  <View style={styles.paymentList}>
+                    {payments.map((p) => {
+                      const paid = !!p.paidAmount;
+                      const overdue = !paid && isPaymentOverdue(p);
+                      const overdueDays = overdue ? daysOverdue(p.dueDate) : 0;
+                      return (
+                        <View key={p.id} style={[styles.paymentTrackRow, overdue && styles.paymentTrackRowUnpaid]}>
+                          <View style={[styles.trackDot, { backgroundColor: paid ? colors.success : overdue ? colors.danger : colors.ink3 }]} />
+                          <View style={styles.rowMain}>
+                            <Text style={styles.paymentTrackTitle}>
+                              Due #{p.dueNumber} · {paid ? `Paid ${formatDate(p.paidDate!)}` : 'Unpaid'}
+                            </Text>
+                            <Text style={styles.paymentTrackSub}>
+                              {paid
+                                ? (p.paymentMode ?? '')
+                                : overdue
+                                  ? `${overdueDays} day${overdueDays !== 1 ? 's' : ''} overdue`
+                                  : `Due ${formatDate(p.dueDate)}`}
+                            </Text>
+                          </View>
+                          <View style={[styles.chip, paid ? styles.chipSuccess : overdue ? styles.chipDanger : styles.chipNeutral]}>
+                            <Text style={[styles.chipText, { color: paid ? colors.success : overdue ? colors.danger : colors.ink2 }]}>
+                              ₹{formatCurrency(paid ? p.paidAmount! : p.totalAmount)}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })}
                   </View>
 
-                  <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={styles.tableScroll}>
-                    <View style={styles.tableBlock}>
-                      <View style={styles.paymentTableHeader}>
-                        <Text style={[styles.pth, styles.colPNo]}>Due No</Text>
-                        <Text style={[styles.pth, styles.colDate]}>Paid Date</Text>
-                        <Text style={[styles.pth, styles.colAmt]}>Paid Amount</Text>
-                        <Text style={[styles.pth, styles.colAmt]}>Remaining</Text>
-                        <Text style={[styles.pth, styles.colAmt]}>Delay Days</Text>
-                        <Text style={[styles.pth, styles.colAmt]}>Delay Interest</Text>
-                        <Text style={[styles.pth, styles.colAmt]}>Mode</Text>
-                      </View>
-
-                      {payments.map((p, i) => (
-                        <View key={p.id} style={[styles.paymentRow, i % 2 === 0 && styles.tableRowEven]}>
-                          <Text style={[styles.td, styles.colPNo]}>{p.dueNumber}</Text>
-                          <Text style={[styles.td, styles.colDate]}>{p.paidDate ? formatDate(p.paidDate) : '-'}</Text>
-                          <Text style={[styles.td, styles.colAmt, p.paidAmount ? styles.paidTd : {}]}>
-                            {p.paidAmount ? `₹${formatCurrency(p.paidAmount)}` : '-'}
-                          </Text>
-                          <Text style={[styles.td, styles.colAmt, (p.remainingAmount ?? 0) > 0 ? styles.partialTd : {}]}>
-                            {(p.remainingAmount ?? 0) > 0 ? `₹${formatCurrency(p.remainingAmount ?? 0)}` : (p.paidAmount ? '₹0.00' : '-')}
-                          </Text>
-                          <Text style={[styles.td, styles.colAmt]}>{p.delayDays > 0 ? p.delayDays : '-'}</Text>
-                          <Text style={[styles.td, styles.colAmt]}>{p.delayInterest > 0 ? `₹${formatCurrency(p.delayInterest)}` : '-'}</Text>
-                          <Text style={[styles.td, styles.colAmt]}>{p.paymentMode ?? '-'}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </ScrollView>
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity style={styles.shareBtn} onPress={() => handleShareLoanStatement(loan)}>
+                      <Text style={styles.shareBtnText}>Export CSV</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.recordPaymentBtn} onPress={() => setPaymentRecorderLoan(loan)}>
+                      <Text style={styles.recordPaymentBtnText}>Record Payment</Text>
+                    </TouchableOpacity>
+                  </View>
 
                   <View style={styles.loanFooter}>
                     <Text style={styles.loanFooterText}>
                       Total Interest: <Text style={styles.loanFooterValue}>₹{formatCurrency(totalLoanInterest)}</Text>
                     </Text>
                     <Text style={styles.loanFooterText}>
-                      Total Payable: <Text style={[styles.loanFooterValue, { color: '#34C759' }]}>
-                        ₹{formatCurrency(loan.repaymentMode === 'adding' ? loan.principal + totalLoanInterest : loan.principal)}
+                      Total Payable: <Text style={[styles.loanFooterValue, { color: colors.success }]}>
+                        ₹{formatCurrency(totalPayable)}
                       </Text>
                     </Text>
                   </View>
@@ -349,134 +363,130 @@ export default function BorrowerDetail({ borrower, onBack, onEdit, onSave }: Pro
 
 const styles = StyleSheet.create({
   container: { padding: 20, paddingBottom: 40 },
-  backBtn: { marginBottom: 16 },
-  backBtnText: { fontSize: 16, color: '#007AFF', fontWeight: '600' },
+  backBtn: { marginBottom: 14 },
+  backBtnText: { fontSize: 15, color: colors.accent, fontWeight: '700' },
 
   profileCard: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 16,
-    flexDirection: 'row', alignItems: 'center', marginBottom: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08, shadowRadius: 3, elevation: 3,
+    backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border,
+    padding: 16, flexDirection: 'row', alignItems: 'center', marginBottom: 14,
   },
   avatar: {
-    width: 52, height: 52, borderRadius: 26, backgroundColor: '#007AFF',
-    justifyContent: 'center', alignItems: 'center', marginRight: 12,
+    width: 52, height: 52, borderRadius: 26, backgroundColor: colors.accentSoft,
+    justifyContent: 'center', alignItems: 'center', marginRight: 13,
   },
-  avatarText: { color: '#fff', fontSize: 22, fontWeight: '700' },
+  avatarText: { color: colors.accent, fontSize: 19, fontWeight: '800' },
   profileInfo: { flex: 1 },
-  profileName: { fontSize: 18, fontWeight: '700', color: '#333' },
-  profilePhone: { fontSize: 14, color: '#666', marginTop: 2 },
-  profileNotes: { fontSize: 13, color: '#888', marginTop: 4, fontStyle: 'italic' },
+  profileName: { fontSize: 17, fontWeight: '800', color: colors.ink },
+  profilePhone: { fontSize: 12.5, color: colors.ink2, marginTop: 3 },
+  profileNotes: { fontSize: 12.5, color: colors.ink3, marginTop: 4, fontStyle: 'italic' },
   editBtn: {
-    backgroundColor: '#f0f0f0', borderRadius: 8,
+    backgroundColor: colors.surface2, borderRadius: radii.md,
     paddingHorizontal: 12, paddingVertical: 7,
   },
-  editBtnText: { fontSize: 14, fontWeight: '600', color: '#333' },
+  editBtnText: { fontSize: 13.5, fontWeight: '700', color: colors.ink },
 
-  summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
   summaryBox: {
-    flex: 1, backgroundColor: '#fff', borderRadius: 10, padding: 12,
-    alignItems: 'center', shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06,
-    shadowRadius: 2, elevation: 2,
+    flex: 1, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border,
+    padding: 12, alignItems: 'center',
   },
-  summaryLabel: { fontSize: 11, color: '#888', marginBottom: 4 },
-  summaryValue: { fontSize: 13, fontWeight: '700', color: '#333', textAlign: 'center' },
+  summaryLabel: { fontSize: 11, color: colors.ink2, marginBottom: 5, fontWeight: '600' },
+  summaryValue: { fontSize: 14, fontWeight: '800', color: colors.ink, textAlign: 'center' },
 
   sectionHeader: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'center', marginBottom: 12,
   },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#333' },
+  sectionTitle: { fontSize: 11, fontWeight: '700', color: colors.accent, letterSpacing: 0.6 },
   addLoanBtn: {
-    backgroundColor: '#007AFF', borderRadius: 8,
-    paddingHorizontal: 12, paddingVertical: 7,
+    backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.accentSoftBorder,
+    borderRadius: radii.pill, paddingHorizontal: 13, paddingVertical: 7,
   },
-  addLoanBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  addLoanBtnText: { color: colors.accent, fontSize: 12.5, fontWeight: '700' },
 
   emptyLoans: { alignItems: 'center', paddingVertical: 30 },
-  emptyText: { color: '#888', fontSize: 14, textAlign: 'center' },
+  emptyText: { color: colors.ink2, fontSize: 14, textAlign: 'center' },
 
   loanCard: {
-    backgroundColor: '#fff', borderRadius: 12, marginBottom: 12,
-    overflow: 'hidden', shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08,
-    shadowRadius: 3, elevation: 3,
+    backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border,
+    marginBottom: 12, overflow: 'hidden',
   },
   statementCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
   },
   loanHeader: {
     padding: 14, flexDirection: 'row',
-    justifyContent: 'space-between', alignItems: 'center',
+    justifyContent: 'space-between', alignItems: 'flex-start',
   },
   loanHeaderLeft: { flex: 1 },
-  loanPrincipal: { fontSize: 17, fontWeight: '700', color: '#333' },
-  loanMeta: { fontSize: 13, color: '#666', marginTop: 3 },
-  loanDue: { fontSize: 12, color: '#FF9500', marginTop: 3, fontWeight: '600' },
-  expandIcon: { fontSize: 12, color: '#888', marginLeft: 8 },
+  loanPrincipal: { fontSize: 17, fontWeight: '800', color: colors.ink },
+  loanMeta: { fontSize: 12.5, color: colors.ink2, marginTop: 3 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  progressTrack: { flex: 1, height: 5, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: colors.success, borderRadius: 3 },
+  progressLabel: { fontSize: 11, color: colors.ink2, fontWeight: '600' },
+  expandIcon: { fontSize: 12, color: colors.ink3, marginLeft: 8, marginTop: 2 },
 
-  scheduleContainer: { borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+  scheduleContainer: { borderTopWidth: 1, borderTopColor: colors.border },
+  subsectionLabel: {
+    fontSize: 10.5, fontWeight: '700', color: colors.ink2, letterSpacing: 0.6,
+    paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8,
+  },
   tableScroll: { paddingBottom: 8 },
   tableBlock: { minWidth: 520 },
   tableHeader: {
-    flexDirection: 'row', backgroundColor: '#007AFF',
-    paddingVertical: 8, paddingHorizontal: 10,
+    flexDirection: 'row', backgroundColor: colors.accentSoft,
+    paddingVertical: 8, paddingHorizontal: 10, marginHorizontal: 14, borderRadius: radii.sm,
   },
-  th: { fontSize: 11, fontWeight: '700', color: '#fff', textAlign: 'center' },
+  th: { fontSize: 11, fontWeight: '700', color: colors.accent, textAlign: 'center' },
   tableRow: {
     flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 10,
-    borderBottomWidth: 1, borderBottomColor: '#f5f5f5',
+    marginHorizontal: 14, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  tableRowEven: { backgroundColor: '#fafafa' },
-  td: { fontSize: 11, color: '#333', textAlign: 'center' },
-  totalTd: { color: '#007AFF', fontWeight: '600' },
+  tableRowEven: { backgroundColor: colors.bg },
+  td: { fontSize: 11, color: colors.ink, textAlign: 'center' },
+  totalTd: { color: colors.accent, fontWeight: '700' },
   colNo: { width: 32 },
   colDate: { flex: 2, textAlign: 'left' },
   colAmt: { flex: 1.5, textAlign: 'right' },
-  colPNo: { width: 32 },
-  paidTd: { color: '#34C759', fontWeight: '600' },
-  partialTd: { color: '#FF9500', fontWeight: '600' },
 
-  paymentTrackerHeader: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', padding: 12, backgroundColor: '#f8f9fa',
-    borderTopWidth: 2, borderTopColor: '#007AFF',
+  paymentList: { paddingHorizontal: 14, gap: 8, paddingBottom: 4 },
+  paymentTrackRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: 10,
   },
-  paymentTrackerTitle: { fontSize: 14, fontWeight: '700', color: '#333' },
-  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  paymentTrackRowUnpaid: { borderColor: colors.danger },
+  trackDot: { width: 8, height: 8, borderRadius: 4 },
+  rowMain: { flex: 1 },
+  paymentTrackTitle: { fontSize: 13, fontWeight: '700', color: colors.ink },
+  paymentTrackSub: { fontSize: 11, color: colors.ink2, marginTop: 2 },
+  chip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: radii.pill },
+  chipSuccess: { backgroundColor: colors.successSoft },
+  chipDanger: { backgroundColor: colors.dangerSoft },
+  chipNeutral: { backgroundColor: colors.surface2 },
+  chipText: { fontSize: 11, fontWeight: '700' },
+
+  actionRow: { flexDirection: 'row', gap: 8, padding: 14 },
   shareBtn: {
-    backgroundColor: '#5B5CE6', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 6,
+    flex: 1, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.accentSoftBorder,
+    borderRadius: radii.md, paddingVertical: 10, alignItems: 'center',
   },
-  shareBtnText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  shareBtnText: { color: colors.accent, fontSize: 12.5, fontWeight: '700' },
   recordPaymentBtn: {
-    backgroundColor: '#34C759', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 6,
+    flex: 1, backgroundColor: colors.success, borderRadius: radii.md,
+    paddingVertical: 10, alignItems: 'center',
   },
-  recordPaymentBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-
-  paymentTableHeader: {
-    flexDirection: 'row', backgroundColor: '#34C759',
-    paddingVertical: 8, paddingHorizontal: 10,
-  },
-  pth: { fontSize: 11, fontWeight: '700', color: '#fff', textAlign: 'center' },
-  paymentRow: {
-    flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 10,
-    borderBottomWidth: 1, borderBottomColor: '#f5f5f5',
-  },
+  recordPaymentBtnText: { color: '#fff', fontSize: 12.5, fontWeight: '700' },
 
   loanFooter: {
-    padding: 12, backgroundColor: '#f8f9fa',
-    borderTopWidth: 1, borderTopColor: '#eee', gap: 4,
+    paddingHorizontal: 14, paddingBottom: 10, gap: 4,
   },
-  loanFooterText: { fontSize: 13, color: '#666' },
-  loanFooterValue: { fontWeight: '700', color: '#333' },
+  loanFooterText: { fontSize: 12.5, color: colors.ink2 },
+  loanFooterValue: { fontWeight: '700', color: colors.ink },
 
   deleteLoanBtn: {
-    margin: 12, marginTop: 4, backgroundColor: '#fff0f0',
-    borderRadius: 8, paddingVertical: 10, alignItems: 'center',
-    borderWidth: 1, borderColor: '#ffcdd2',
+    margin: 14, marginTop: 4, backgroundColor: colors.dangerSoft,
+    borderRadius: radii.md, paddingVertical: 10, alignItems: 'center',
   },
-  deleteLoanBtnText: { color: '#FF3B30', fontSize: 14, fontWeight: '600' },
+  deleteLoanBtnText: { color: colors.danger, fontSize: 13, fontWeight: '700' },
 });

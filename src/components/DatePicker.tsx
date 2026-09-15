@@ -24,6 +24,14 @@ function formatDate(date: Date): string {
   });
 }
 
+// Local (not UTC) YYYY-MM-DD, as required by <input type="date">'s value attribute.
+function toInputDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 /** Cross-platform date picker: Android shows native dialog; iOS uses a bottom modal with Done/Cancel. */
 export default function DatePicker({ label, value, onChange, placeholder }: DatePickerProps) {
   const [show, setShow] = useState(false);
@@ -51,15 +59,33 @@ export default function DatePicker({ label, value, onChange, placeholder }: Date
     setTempDate(value ?? new Date());
   };
 
+  const handleWebChange = (event: any) => {
+    const raw: string = event.target.value;
+    if (!raw) return;
+    const [year, month, day] = raw.split('-').map(Number);
+    onChange(new Date(year, month - 1, day));
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.label}>{label}</Text>
-      <TouchableOpacity style={styles.button} onPress={() => setShow(true)}>
-        <Text style={[styles.buttonText, !value && styles.placeholder]}>
-          {value ? formatDate(value) : placeholder}
-        </Text>
-        <Text style={styles.icon}>📅</Text>
-      </TouchableOpacity>
+
+      {Platform.OS === 'web' ? (
+        React.createElement('input', {
+          type: 'date',
+          value: value ? toInputDateString(value) : '',
+          placeholder,
+          onChange: handleWebChange,
+          style: webInputStyle,
+        })
+      ) : (
+        <TouchableOpacity style={styles.button} onPress={() => setShow(true)}>
+          <Text style={[styles.buttonText, !value && styles.placeholder]}>
+            {value ? formatDate(value) : placeholder}
+          </Text>
+          <Text style={styles.icon}>📅</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Android: inline picker */}
       {show && Platform.OS === 'android' && (
@@ -99,6 +125,19 @@ export default function DatePicker({ label, value, onChange, placeholder }: Date
     </View>
   );
 }
+
+// Plain CSS (not a RN ViewStyle) for the raw DOM <input> rendered on web.
+const webInputStyle: Record<string, string | number> = {
+  border: '1px solid #ddd',
+  borderRadius: 8,
+  padding: 12,
+  fontSize: 16,
+  color: '#333',
+  backgroundColor: '#fafafa',
+  width: '100%',
+  boxSizing: 'border-box',
+  fontFamily: 'inherit',
+};
 
 const styles = StyleSheet.create({
   container: {

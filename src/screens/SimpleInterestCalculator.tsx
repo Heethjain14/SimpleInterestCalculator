@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import DatePicker from '../components/DatePicker';
 import ShareResultCard from '../components/ShareResultCard';
-import { formatCurrency } from '../utils/format';
+import { colors, radii } from '../theme/tokens';
 
 export interface CalculationResult {
   principal: number;
@@ -73,12 +73,12 @@ export default function SimpleInterestCalculator() {
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Principal Amount</Text>
           <TextInput style={styles.input} value={principal} onChangeText={setPrincipal}
-            placeholder="Enter principal amount" placeholderTextColor="#aaa" keyboardType="numeric" />
+            placeholder="Enter principal amount" placeholderTextColor={colors.ink3} keyboardType="numeric" />
         </View>
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Interest Rate (%)</Text>
           <TextInput style={styles.input} value={interestRate} onChangeText={setInterestRate}
-            placeholder="Enter interest rate" placeholderTextColor="#aaa" keyboardType="numeric" />
+            placeholder="Enter interest rate" placeholderTextColor={colors.ink3} keyboardType="numeric" />
           <View style={styles.rateButtonsRow}>
             {RATE_PRESETS.map(r => {
               const label = String(r);
@@ -116,24 +116,28 @@ export default function SimpleInterestCalculator() {
 const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: 20, paddingBottom: 30 },
   form: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 20, marginBottom: 20,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1, shadowRadius: 3.84, elevation: 5,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    marginBottom: 16,
+    gap: 14,
   },
-  inputGroup: { marginBottom: 20 },
-  label: { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 },
+  inputGroup: { gap: 7 },
+  label: { fontSize: 12.5, fontWeight: '700', color: colors.ink2 },
   input: {
-    borderWidth: 1, borderColor: '#ddd', borderRadius: 8,
-    padding: 12, fontSize: 16, backgroundColor: '#fafafa', color: '#333',
+    borderWidth: 1, borderColor: colors.border, borderRadius: radii.md,
+    padding: 12, fontSize: 14.5, backgroundColor: colors.surface, color: colors.ink,
   },
-  rateButtonsRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10, gap: 10 },
-  rateButton: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: '#ddd', backgroundColor: '#f7f7f7' },
-  rateButtonSelected: { backgroundColor: '#007AFF', borderColor: '#007AFF' },
-  rateButtonText: { fontSize: 14, color: '#333', fontWeight: '600' },
+  rateButtonsRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, gap: 8 },
+  rateButton: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  rateButtonSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
+  rateButtonText: { fontSize: 13, color: colors.ink2, fontWeight: '700' },
   rateButtonTextSelected: { color: '#fff' },
-  buttonContainer: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
-  calculateButton: { backgroundColor: '#007AFF', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, flex: 1, marginRight: 10 },
-  calculateButtonText: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
-  clearButton: { backgroundColor: '#FF3B30', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8, flex: 1, marginLeft: 10 },
-  clearButtonText: { color: '#fff', fontSize: 16, fontWeight: '600', textAlign: 'center' },
+  buttonContainer: { flexDirection: 'row', gap: 8 },
+  calculateButton: { backgroundColor: colors.accent, paddingVertical: 12, borderRadius: radii.md, flex: 1 },
+  calculateButtonText: { color: '#fff', fontSize: 14.5, fontWeight: '700', textAlign: 'center' },
+  clearButton: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingVertical: 12, borderRadius: radii.md, flex: 1 },
+  clearButtonText: { color: colors.ink, fontSize: 14.5, fontWeight: '700', textAlign: 'center' },
 });

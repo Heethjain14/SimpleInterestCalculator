@@ -43,3 +43,6 @@ yarn-error.*
 
 # Claude Code agent worktrees
 .claude/
+
+# Impeccable design-skill cache
+.impeccable/

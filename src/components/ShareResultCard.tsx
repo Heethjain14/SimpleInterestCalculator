@@ -9,6 +9,7 @@ import {
 import * as Sharing from 'expo-sharing';
 import ViewShot, { captureRef, ViewShotRef } from 'react-native-view-shot';
 import { CalculationResult } from '../screens/SimpleInterestCalculator';
+import { colors, radii } from '../theme/tokens';
 
 interface Props {
   result: CalculationResult;
@@ -29,22 +30,12 @@ function formatCurrency(amount: number): string {
   });
 }
 
-/** Renders a shareable PNG card for simple interest results using ViewShot + expo-sharing. */
+/** Renders a shareable PNG result card for simple interest results using ViewShot + expo-sharing. */
 export default function ShareResultCard({ result }: Props) {
   const [sharing, setSharing] = useState(false);
   const cardRef = useRef<ViewShotRef>(null);
 
   const totalAmount = result.principal + result.interest;
-
-  const rows: { label: string; value: string; highlight?: boolean }[] = [
-    { label: 'Principal Amount', value: `₹${formatCurrency(result.principal)}` },
-    { label: 'Interest Rate', value: `${result.interestRate}% per month` },
-    { label: 'Start Date', value: formatDate(result.startDate) },
-    { label: 'End Date', value: formatDate(result.endDate) },
-    { label: 'Number of Days', value: `${result.days} days` },
-    { label: 'Interest Earned', value: `₹${formatCurrency(result.interest)}` },
-    { label: 'Total Amount', value: `₹${formatCurrency(totalAmount)}`, highlight: true },
-  ];
 
   const handleShare = async () => {
     setSharing(true);
@@ -55,7 +46,6 @@ export default function ShareResultCard({ result }: Props) {
         return;
       }
 
-      // Capture the card as a PNG image
       const uri = await captureRef(cardRef, {
         format: 'png',
         quality: 1,
@@ -78,23 +68,25 @@ export default function ShareResultCard({ result }: Props) {
       {/* ViewShot wraps only the card visuals, not the button */}
       <ViewShot ref={cardRef} options={{ format: 'png', quality: 1 }}>
         <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.title}>Simple Interest Calculation</Text>
-          </View>
+          <Text style={styles.resultLabel}>Interest earned</Text>
+          <Text style={styles.resultValue}>₹{formatCurrency(result.interest)}</Text>
+          <Text style={styles.rangeText}>
+            {result.interestRate}%/month · {formatDate(result.startDate)} – {formatDate(result.endDate)}
+          </Text>
 
-          {rows.map(({ label, value, highlight }) => (
-            <View key={label} style={[styles.row, highlight && styles.rowHighlight]}>
-              <Text style={[styles.rowLabel, highlight && styles.rowLabelHighlight]}>
-                {label}
-              </Text>
-              <Text style={[styles.rowValue, highlight && styles.rowValueHighlight]}>
-                {value}
-              </Text>
+          <View style={styles.footer}>
+            <View style={styles.footerItem}>
+              <Text style={styles.footerLabel}>Days</Text>
+              <Text style={styles.footerValue}>{result.days}</Text>
             </View>
-          ))}
-
-          <View style={styles.cardFooter}>
-            <Text style={styles.footerText}>Simple Interest Calculator</Text>
+            <View style={styles.footerItem}>
+              <Text style={styles.footerLabel}>Principal</Text>
+              <Text style={styles.footerValue}>₹{formatCurrency(result.principal)}</Text>
+            </View>
+            <View style={styles.footerItem}>
+              <Text style={styles.footerLabel}>Total</Text>
+              <Text style={[styles.footerValue, { color: colors.success }]}>₹{formatCurrency(totalAmount)}</Text>
+            </View>
           </View>
         </View>
       </ViewShot>
@@ -115,79 +107,48 @@ export default function ShareResultCard({ result }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accentSoftBorder,
+    borderRadius: radii.xl,
+    padding: 18,
+    alignItems: 'center',
     marginBottom: 12,
   },
-  cardHeader: {
-    backgroundColor: '#007AFF',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-    textAlign: 'center',
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  rowHighlight: {
-    backgroundColor: '#f0f7ff',
-    paddingHorizontal: 20,
-    marginTop: 4,
-    borderBottomWidth: 0,
-  },
-  rowLabel: {
-    fontSize: 15,
-    color: '#666',
-    flex: 1,
-  },
-  rowLabelHighlight: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#333',
-  },
-  rowValue: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#333',
-    textAlign: 'right',
-  },
-  rowValueHighlight: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#007AFF',
-  },
-  cardFooter: {
-    paddingVertical: 10,
-    alignItems: 'center',
-    backgroundColor: '#f9f9f9',
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  footerText: {
+  resultLabel: {
     fontSize: 12,
-    color: '#aaa',
+    fontWeight: '700',
+    color: colors.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
   },
+  resultValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.ink,
+  },
+  rangeText: {
+    fontSize: 12,
+    color: colors.ink2,
+    marginTop: 6,
+    fontWeight: '600',
+  },
+  footer: {
+    flexDirection: 'row',
+    width: '100%',
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.accentSoftBorder,
+  },
+  footerItem: { flex: 1, alignItems: 'center' },
+  footerLabel: { fontSize: 10.5, color: colors.ink2, marginBottom: 3, fontWeight: '600' },
+  footerValue: { fontSize: 13, fontWeight: '700', color: colors.ink },
   shareButton: {
-    backgroundColor: '#34C759',
+    backgroundColor: colors.success,
     paddingVertical: 13,
-    borderRadius: 8,
+    borderRadius: radii.md,
     alignItems: 'center',
     marginBottom: 20,
   },
@@ -196,7 +157,7 @@ const styles = StyleSheet.create({
   },
   shareButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

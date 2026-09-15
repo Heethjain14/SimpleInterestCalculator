@@ -6,6 +6,7 @@ import {
 import { Loan, Payment, PaymentMode } from '../types';
 import DatePicker from './DatePicker';
 import { getAmountDue } from '../utils/duePayments';
+import { colors, radii } from '../theme/tokens';
 
 interface Props {
   loan: Loan;
@@ -192,11 +193,11 @@ export default function PaymentRecorder({ loan, visible, paymentId, onSave, onCa
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(8,10,18,0.52)',
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 18,
@@ -212,7 +213,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 5,
     borderRadius: 999,
-    backgroundColor: '#dfe3eb',
+    backgroundColor: colors.border,
     alignSelf: 'center',
     marginBottom: 12,
   },
@@ -223,34 +224,34 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1f2937',
+    fontSize: 19,
+    fontWeight: '800',
+    color: colors.ink,
   },
   closeBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: colors.surface2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeText: {
     fontSize: 18,
-    color: '#374151',
+    color: colors.ink2,
     fontWeight: '700',
   },
   summaryCard: {
-    backgroundColor: '#f6f8ff',
-    borderColor: '#dfe7ff',
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accentSoftBorder,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: radii.xl,
     padding: 14,
     marginBottom: 16,
   },
   summaryLabel: {
     fontSize: 12,
-    color: '#6b7280',
+    color: colors.ink2,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -258,7 +259,7 @@ const styles = StyleSheet.create({
   summaryAmount: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#1d4ed8',
+    color: colors.accent,
     marginTop: 4,
   },
   summaryMeta: {
@@ -269,13 +270,13 @@ const styles = StyleSheet.create({
   },
   metaText: {
     fontSize: 12,
-    color: '#4b5563',
+    color: colors.ink2,
     fontWeight: '600',
   },
   sectionLabel: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '700',
-    color: '#374151',
+    color: colors.ink2,
     marginBottom: 8,
   },
   quickRow: {
@@ -285,15 +286,15 @@ const styles = StyleSheet.create({
   },
   quickBtn: {
     flex: 1,
-    borderRadius: 10,
-    backgroundColor: '#eef2ff',
+    borderRadius: radii.md,
+    backgroundColor: colors.accentSoft,
     borderWidth: 1,
-    borderColor: '#c7d2fe',
+    borderColor: colors.accentSoftBorder,
     paddingVertical: 10,
     alignItems: 'center',
   },
   quickBtnText: {
-    color: '#1d4ed8',
+    color: colors.accent,
     fontWeight: '700',
     fontSize: 14,
   },
@@ -307,58 +308,58 @@ const styles = StyleSheet.create({
   },
   modeBtn: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.surface,
     marginBottom: 8,
   },
   modeBtnActive: {
-    backgroundColor: '#dcfce7',
-    borderColor: '#22c55e',
+    backgroundColor: colors.successSoft,
+    borderColor: colors.success,
   },
   modeBtnText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#374151',
+    color: colors.ink2,
   },
   modeBtnTextActive: {
-    color: '#166534',
+    color: colors.success,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
+    borderColor: colors.border,
+    borderRadius: radii.md,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    fontSize: 16,
-    backgroundColor: '#fafafa',
-    color: '#111827',
+    fontSize: 15,
+    backgroundColor: colors.surface,
+    color: colors.ink,
   },
   actions: {
     gap: 10,
   },
   saveBtn: {
-    backgroundColor: '#16a34a',
-    borderRadius: 12,
+    backgroundColor: colors.success,
+    borderRadius: radii.md,
     paddingVertical: 14,
     alignItems: 'center',
   },
   saveBtnText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
   },
   cancelBtn: {
-    backgroundColor: '#f3f4f6',
-    borderRadius: 12,
+    backgroundColor: colors.surface2,
+    borderRadius: radii.md,
     paddingVertical: 12,
     alignItems: 'center',
   },
   cancelBtnText: {
-    color: '#374151',
-    fontSize: 15,
+    color: colors.ink2,
+    fontSize: 14.5,
     fontWeight: '600',
   },
   emptyState: {
@@ -367,8 +368,8 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   emptyText: {
-    fontSize: 16,
-    color: '#4b5563',
+    fontSize: 15,
+    color: colors.ink2,
     marginBottom: 20,
     textAlign: 'center',
   },

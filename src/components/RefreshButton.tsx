@@ -1,6 +1,7 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { useStorageContext, RefreshResult } from '../context/StorageContext';
+import { colors, radii } from '../theme/tokens';
 
 interface Props {
   compact?: boolean;
@@ -49,7 +50,7 @@ export default function RefreshButton({ compact }: Props) {
       disabled={refreshing}
     >
       {refreshing ? (
-        <ActivityIndicator size="small" color="#1d4ed8" />
+        <ActivityIndicator size="small" color={colors.accent} />
       ) : (
         <Text style={styles.text}>{compact ? '↻' : 'Refresh'}</Text>
       )}
@@ -59,18 +60,18 @@ export default function RefreshButton({ compact }: Props) {
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: '#eaf2ff',
-    borderRadius: 8,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.md,
     paddingHorizontal: 14,
     paddingVertical: 10,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#cfe0ff',
+    borderColor: colors.accentSoftBorder,
   },
   compact: {
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  text: { color: '#1d4ed8', fontWeight: '700', fontSize: 14 },
+  text: { color: colors.accent, fontWeight: '700', fontSize: 14 },
 });

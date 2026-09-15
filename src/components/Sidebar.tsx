@@ -10,8 +10,9 @@ import {
 import { SafeAreaView } from 'react-native';
 
 import { NAV_ITEMS, Screen } from '../navigation/screens';
+import { colors, radii } from '../theme/tokens';
 
-const SIDEBAR_WIDTH = 260;
+const SIDEBAR_WIDTH = 272;
 
 interface Props {
   visible: boolean;
@@ -90,7 +91,7 @@ export default function Sidebar({
           {/* Header */}
           <View style={styles.brand}>
             <Text style={styles.brandTitle}>
-              Interest Calculator
+              Portfolio Ledger
             </Text>
             <Text style={styles.brandSubtitle}>
               Loan Portfolio Manager
@@ -135,7 +136,7 @@ export default function Sidebar({
             onPress={onClose}
           >
             <Text style={styles.closeButtonText}>
-              ← Hide Menu
+              ‹ Hide menu
             </Text>
           </TouchableOpacity>
         </SafeAreaView>
@@ -149,7 +150,7 @@ export const SIDEBAR_WIDTH_EXPORT = SIDEBAR_WIDTH;
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(8,10,18,0.52)',
   },
 
   sidebar: {
@@ -160,7 +161,7 @@ const styles = StyleSheet.create({
 
     width: SIDEBAR_WIDTH,
 
-    backgroundColor: '#1E293B',
+    backgroundColor: colors.sidebar,
 
     elevation: 20,
 
@@ -179,19 +180,20 @@ const styles = StyleSheet.create({
     paddingBottom: 22,
 
     borderBottomWidth: 1,
-    borderBottomColor: '#334155',
+    borderBottomColor: colors.sidebarBorder,
   },
 
   brandTitle: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '800',
     color: '#FFFFFF',
+    letterSpacing: -0.2,
   },
 
   brandSubtitle: {
     marginTop: 5,
-    fontSize: 13,
-    color: '#94A3B8',
+    fontSize: 12.5,
+    color: colors.sidebarInkDim,
   },
 
   navContainer: {
@@ -204,28 +206,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
 
-    paddingVertical: 14,
+    paddingVertical: 13,
     paddingHorizontal: 14,
 
-    borderRadius: 12,
-    marginBottom: 6,
+    borderRadius: radii.md,
+    marginBottom: 4,
   },
 
   navItemActive: {
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.sidebarActive,
   },
 
   icon: {
-    width: 28,
-    fontSize: 20,
+    width: 26,
+    fontSize: 18,
     textAlign: 'center',
-    marginRight: 14,
+    marginRight: 12,
   },
 
   navLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#CBD5E1',
+    fontSize: 14.5,
+    fontWeight: '700',
+    color: colors.sidebarInk,
   },
 
   navLabelActive: {
@@ -233,16 +235,19 @@ const styles = StyleSheet.create({
   },
 
   closeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     borderTopWidth: 1,
-    borderTopColor: '#334155',
+    borderTopColor: colors.sidebarBorder,
 
     paddingVertical: 16,
     paddingHorizontal: 18,
   },
 
   closeButtonText: {
-    color: '#94A3B8',
-    fontWeight: '600',
-    fontSize: 15,
+    color: colors.sidebarInkDim,
+    fontWeight: '700',
+    fontSize: 13.5,
   },
 });

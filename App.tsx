@@ -11,6 +11,7 @@ import SimpleInterestCalculator from './src/screens/SimpleInterestCalculator';
 import EmiCalculator from './src/screens/EmiCalculator';
 import BorrowerList from './src/screens/BorrowerList';
 import { Screen, SCREEN_SUBTITLES, NAV_ITEMS } from './src/navigation/screens';
+import { colors, radii } from './src/theme/tokens';
 
 // Re-export for ShareResultCard backward compatibility
 export type { CalculationResult } from './src/screens/SimpleInterestCalculator';
@@ -95,7 +96,7 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1, backgroundColor: colors.bg },
   contentContainer: {
     flex: 1,
   },
@@ -104,27 +105,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.bg,
     borderBottomWidth: 1,
-    borderBottomColor: '#e8e8e8',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 4,
+    borderBottomColor: colors.border,
   },
   menuBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#f1f5f9',
+    width: 34,
+    height: 34,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
-  menuIcon: { fontSize: 20, color: '#334155', fontWeight: '700' },
+  menuIcon: { fontSize: 16, color: colors.ink2, fontWeight: '700' },
   headerText: { flex: 1 },
-  title: { fontSize: 20, fontWeight: '800', color: '#1e293b' },
-  subtitle: { fontSize: 13, color: '#64748b', marginTop: 2 },
+  title: { fontSize: 19, fontWeight: '800', color: colors.ink, letterSpacing: -0.2 },
+  subtitle: { fontSize: 12.5, color: colors.ink2, marginTop: 1 },
   content: { flex: 1 },
 });

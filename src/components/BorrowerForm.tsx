@@ -6,6 +6,7 @@
   import { Borrower, Loan, Payment } from '../types';
   import { useNotifications } from '../hooks/useNotifications';
   import DatePicker from './DatePicker';
+  import { colors, radii } from '../theme/tokens';
 
   interface Props {
     initial?: Borrower;
@@ -171,7 +172,7 @@
             value={name}
             onChangeText={setName}
             placeholder="Enter full name"
-            placeholderTextColor="#aaa"
+            placeholderTextColor={colors.ink3}
           />
 
           <Text style={styles.label}>Phone Number *</Text>
@@ -180,7 +181,7 @@
             value={phone}
             onChangeText={setPhone}
             placeholder="Enter phone number"
-            placeholderTextColor="#aaa"
+            placeholderTextColor={colors.ink3}
             keyboardType="phone-pad"
           />
 
@@ -190,7 +191,7 @@
             value={notes}
             onChangeText={setNotes}
             placeholder="Any additional notes…"
-            placeholderTextColor="#aaa"
+            placeholderTextColor={colors.ink3}
             multiline
             numberOfLines={3}
           />
@@ -207,7 +208,7 @@
               value={principal}
               onChangeText={setPrincipal}
               placeholder="Enter principal"
-              placeholderTextColor="#aaa"
+              placeholderTextColor={colors.ink3}
               keyboardType="numeric"
             />
 
@@ -217,7 +218,7 @@
               value={rate}
               onChangeText={setRate}
               placeholder="Enter rate"
-              placeholderTextColor="#aaa"
+              placeholderTextColor={colors.ink3}
               keyboardType="numeric"
             />
             <View style={styles.rateRow}>
@@ -240,7 +241,7 @@
               value={tenure}
               onChangeText={setTenure}
               placeholder="Enter tenure"
-              placeholderTextColor="#aaa"
+              placeholderTextColor={colors.ink3}
               keyboardType="numeric"
             />
 
@@ -272,7 +273,7 @@
               value={loanNotes}
               onChangeText={setLoanNotes}
               placeholder="Purpose, collateral, etc."
-              placeholderTextColor="#aaa"
+              placeholderTextColor={colors.ink3}
             />
           </View>
         )}
@@ -292,18 +293,16 @@
 
   const styles = StyleSheet.create({
     container: { padding: 20, paddingBottom: 40 },
-    pageTitle: { fontSize: 24, fontWeight: '700', color: '#333', marginBottom: 20 },
+    pageTitle: { fontSize: 20, fontWeight: '800', color: colors.ink, marginBottom: 16 },
     section: {
-      backgroundColor: '#fff', borderRadius: 12, padding: 16,
-      marginBottom: 16, shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08,
-      shadowRadius: 3, elevation: 3,
+      backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1,
+      borderColor: colors.border, padding: 16, marginBottom: 14,
     },
     sectionTitle: {
-      fontSize: 14, fontWeight: '700', color: '#007AFF',
-      textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14,
+      fontSize: 11, fontWeight: '700', color: colors.accent,
+      textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 14,
     },
-    label: { fontSize: 14, fontWeight: '600', color: '#333', marginBottom: 6, marginTop: 10 },
+    label: { fontSize: 12.5, fontWeight: '700', color: colors.ink2, marginBottom: 6, marginTop: 10 },
     modeRow: {
       flexDirection: 'row',
       gap: 8,
@@ -312,46 +311,46 @@
     modeBtn: {
       flex: 1,
       borderWidth: 1,
-      borderColor: '#d1d5db',
-      borderRadius: 10,
-      paddingVertical: 10,
+      borderColor: colors.border,
+      borderRadius: radii.md,
+      paddingVertical: 11,
       alignItems: 'center',
-      backgroundColor: '#f8fafc',
+      backgroundColor: colors.surface,
     },
     modeBtnActive: {
-      backgroundColor: '#e0f2fe',
-      borderColor: '#38bdf8',
+      backgroundColor: colors.accentSoft,
+      borderColor: colors.accent,
     },
     modeBtnText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: '#374151',
+      fontSize: 13.5,
+      fontWeight: '700',
+      color: colors.ink2,
     },
     modeBtnTextActive: {
-      color: '#051219',
+      color: colors.accent,
     },
     input: {
-      borderWidth: 1, borderColor: '#ddd', borderRadius: 8,
-      padding: 11, fontSize: 15, backgroundColor: '#fafafa', color: '#333',
+      borderWidth: 1, borderColor: colors.border, borderRadius: radii.md,
+      padding: 11, fontSize: 14.5, backgroundColor: colors.surface, color: colors.ink,
     },
     multiline: { height: 80, textAlignVertical: 'top' },
-    rateRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+    rateRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
     rateBtn: {
-      paddingVertical: 7, paddingHorizontal: 14, borderRadius: 20,
-      borderWidth: 1, borderColor: '#ddd', backgroundColor: '#f7f7f7',
+      paddingVertical: 8, paddingHorizontal: 14, borderRadius: radii.pill,
+      borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
     },
-    rateBtnActive: { backgroundColor: '#007AFF', borderColor: '#007AFF' },
-    rateBtnText: { fontSize: 13, color: '#333', fontWeight: '600' },
+    rateBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+    rateBtnText: { fontSize: 13, color: colors.ink2, fontWeight: '700' },
     rateBtnTextActive: { color: '#fff' },
     actions: { gap: 10, marginTop: 4 },
     saveBtn: {
-      backgroundColor: '#007AFF', borderRadius: 8,
+      backgroundColor: colors.accent, borderRadius: radii.md,
       paddingVertical: 14, alignItems: 'center',
     },
-    saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+    saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
     cancelBtn: {
-      backgroundColor: '#f0f0f0', borderRadius: 8,
-      paddingVertical: 14, alignItems: 'center',
+      backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+      borderRadius: radii.md, paddingVertical: 14, alignItems: 'center',
     },
-    cancelBtnText: { color: '#333', fontSize: 16, fontWeight: '600' },
+    cancelBtnText: { color: colors.ink, fontSize: 15, fontWeight: '700' },
   });

@@ -2,8 +2,10 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { useStorageContext } from '../context/StorageContext';
 import { computePortfolioMetrics } from '../utils/portfolioMetrics';
+import { getDuePayments } from '../utils/duePayments';
 import { formatCurrency } from '../utils/format';
 import RefreshButton from '../components/RefreshButton';
+import { colors, radii, priorityColor } from '../theme/tokens';
 
 interface MetricCardProps {
   label: string;
@@ -22,16 +24,17 @@ function MetricCard({ label, value, accent, sub }: MetricCardProps) {
   );
 }
 
-/** Portfolio dashboard with exposure, weighted rate, and collection metrics. */
+/** Portfolio dashboard with exposure, weighted rate, collection metrics, and a due-soon preview. */
 export default function Dashboard() {
   const { borrowers, loading } = useStorageContext();
 
   const metrics = useMemo(() => computePortfolioMetrics(borrowers), [borrowers]);
+  const dueSoon = useMemo(() => getDuePayments(borrowers).slice(0, 3), [borrowers]);
 
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -55,19 +58,17 @@ export default function Dashboard() {
         <MetricCard
           label="Outstanding"
           value={`₹${formatCurrency(metrics.totalOutstanding)}`}
-          accent="#FF9500"
           sub="Yet to be collected"
         />
         <MetricCard
           label="Collected"
           value={`₹${formatCurrency(metrics.totalCollected)}`}
-          accent="#34C759"
           sub={`${metrics.collectionRate.toFixed(1)}% collection rate`}
         />
         <MetricCard
           label="Overdue"
           value={`₹${formatCurrency(metrics.overdueAmount)}`}
-          accent="#FF3B30"
+          accent={colors.danger}
           sub={`${metrics.overdueCount} installment${metrics.overdueCount !== 1 ? 's' : ''}`}
         />
         <MetricCard
@@ -75,6 +76,33 @@ export default function Dashboard() {
           value={String(metrics.activeLoans)}
           sub={`${metrics.activeBorrowers} client${metrics.activeBorrowers !== 1 ? 's' : ''}`}
         />
+      </View>
+
+      <View style={styles.block}>
+        <Text style={styles.blockTitle}>DUE SOON</Text>
+        {dueSoon.length === 0 ? (
+          <View style={styles.list}>
+            <Text style={styles.emptyRow}>No overdue installments right now</Text>
+          </View>
+        ) : (
+          <View style={styles.list}>
+            {dueSoon.map((item, index) => (
+              <View
+                key={`${item.borrowerId}-${item.payment.id}`}
+                style={[styles.row, index === dueSoon.length - 1 && styles.rowLast]}
+              >
+                <View style={[styles.dot, { backgroundColor: priorityColor(item.daysOverdue) }]} />
+                <View style={styles.rowMain}>
+                  <Text style={styles.rowTitle}>{item.borrowerName}</Text>
+                  <Text style={styles.rowSub}>
+                    {item.daysOverdue} day{item.daysOverdue !== 1 ? 's' : ''} late · ₹{formatCurrency(item.amountDue)}
+                  </Text>
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
 
       <View style={styles.infoCard}>
@@ -99,38 +127,73 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  sectionTitle: { fontSize: 20, fontWeight: '800', color: '#1e293b' },
+  sectionTitle: { fontSize: 16, fontWeight: '800', color: colors.ink },
   heroCard: {
-    backgroundColor: '#007AFF',
-    borderRadius: 16,
+    backgroundColor: colors.accent,
+    borderRadius: radii.xxl,
     padding: 20,
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  heroLabel: { fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  heroValue: { fontSize: 32, fontWeight: '800', color: '#fff', marginTop: 6 },
-  heroSub: { fontSize: 14, color: 'rgba(255,255,255,0.9)', marginTop: 8, fontWeight: '600' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 16 },
+  heroLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.82)',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  heroValue: { fontSize: 32, fontWeight: '800', color: '#fff', marginTop: 8, letterSpacing: -0.4 },
+  heroSub: { fontSize: 13, color: 'rgba(255,255,255,0.88)', marginTop: 10, fontWeight: '600' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
   metricCard: {
-    width: '47%',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 3,
+    width: '48%',
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 13,
   },
-  metricLabel: { fontSize: 12, color: '#64748b', fontWeight: '600', marginBottom: 6 },
-  metricValue: { fontSize: 18, fontWeight: '800', color: '#1e293b' },
-  metricSub: { fontSize: 11, color: '#94a3b8', marginTop: 4 },
+  metricLabel: { fontSize: 11.5, color: colors.ink2, fontWeight: '600', marginBottom: 6 },
+  metricValue: { fontSize: 18, fontWeight: '800', color: colors.ink },
+  metricSub: { fontSize: 11, color: colors.ink3, marginTop: 4 },
+  block: { marginBottom: 16 },
+  blockTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.accent,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  list: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  emptyRow: { padding: 16, fontSize: 13, color: colors.ink2, textAlign: 'center' },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  rowLast: { borderBottomWidth: 0 },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  rowMain: { flex: 1 },
+  rowTitle: { fontSize: 14.5, fontWeight: '700', color: colors.ink },
+  rowSub: { fontSize: 12, color: colors.ink2, marginTop: 3 },
+  chevron: { fontSize: 18, color: colors.ink3, fontWeight: '700' },
   infoCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: colors.border,
   },
-  infoTitle: { fontSize: 14, fontWeight: '700', color: '#334155', marginBottom: 8 },
-  infoText: { fontSize: 13, color: '#64748b', lineHeight: 20 },
+  infoTitle: { fontSize: 13.5, fontWeight: '700', color: colors.ink, marginBottom: 8 },
+  infoText: { fontSize: 12.5, color: colors.ink2, lineHeight: 20 },
 });
