@@ -108,68 +108,94 @@ explicitly.
   exactly the piece Firestore gives you for free — which is significant
   extra work for a small, single-maintainer app.
 
-### Option C — MongoDB Atlas (+ Device Sync / Realm)
+### Option C — MongoDB Atlas
 
 - **Schema fit:** Closest conceptually to the current nested JSON — a
   `borrowers` collection where each document *is* basically today's
   `Borrower` object (loans and payments embedded, no schema migration
   needed at the shape level).
-- **Offline & sync:** Atlas Device Sync (built on what used to be Realm)
-  provides an embedded local database with bidirectional sync and conflict
-  resolution, which would satisfy the offline-first requirement similarly
-  to Firestore. However, MongoDB has been actively deprecating/sunsetting
-  parts of the Realm/Device Sync product line, which is a real risk to
-  build new work on right now — it needs to be re-verified against
-  MongoDB's current product roadmap before committing, not assumed stable.
+- **Offline & sync:** No built-in client-side offline sync is available
+  any more (see update below) — same gap as Option B: `StorageContext`'s
+  existing AsyncStorage-first pattern keeps doing this job, unchanged.
 - **Cross-cutting queries:** Full MongoDB query language (rich filters,
   aggregation pipeline) — very capable for the overdue-payments-style
   queries.
-- **Auth:** Atlas App Services provides auth (email/password, anonymous,
-  OAuth) tied to sync permissions.
-- **Cost:** Free M0 cluster tier exists but is limited; Device Sync
-  pricing/availability has shifted over time.
-- **Expo/RN fit:** Requires either the Realm/Atlas Device Sync SDK (a
-  native module — needs an EAS development build, not plain Expo Go) or
-  going server-only via the Data API (in which case you lose the
-  offline-sync benefit and are back to hand-rolling it, same gap as Option B).
-- **Tradeoff:** Best schema fit, but the offline-sync story is currently
-  the least stable of the three and adds a native-module dependency the
-  other two avoid.
+- **Auth:** Would need to be hand-rolled in the API layer described below
+  (e.g. a simple API key or JWT check), since there's no managed
+  auth-plus-sync product tying the two together any more.
+- **Cost:** Free M0 cluster tier exists and is enough for this app's scale.
+- **Expo/RN fit:** Excellent, *specifically because* the integration path
+  below is plain HTTP — no native module, works in plain Expo Go.
+- **Tradeoff:** No managed offline-sync layer (you're already covering
+  that need locally via `StorageContext`/AsyncStorage today, so this is a
+  smaller gap than it sounds); you own running/hosting a small API server.
+
+> **Update (2026-09-15):** the item flagged above as a risk has materialized.
+> MongoDB's **Atlas Data API and Atlas Device Sync (Realm) both reached
+> end-of-life on September 30, 2025** and are no longer available for new
+> projects — confirmed via MongoDB's own deprecation notice and community
+> forum posts. This removes the "managed, Firestore-like" integration paths
+> for MongoDB entirely. MongoDB's own current guidance for client apps is to
+> build a REST API with a server framework (e.g. Express) and the native
+> MongoDB Node driver, and call that from the client — which is exactly
+> **Option C-1** below. This isn't a downgrade in practice for this app:
+> `StorageContext` already owns offline-first behavior locally, so a plain
+> REST backend loses nothing this app currently relies on, and it's the
+> option actually chosen (see §5).
+
+### Option C-1 — MongoDB Atlas via a self-hosted REST API (chosen)
+
+Since Options B and C's managed-sync paths are gone, this is the concrete
+shape of "use MongoDB" going forward: a small Express (Node) server, using
+the `mongodb` npm driver, exposing REST routes that mirror
+`src/services/sheetsSync.ts`'s existing function set 1:1
+(`fetchAllData`, `addLoan`, `updateLoanInfo`, `updateBorrowerInfo`,
+`writePaymentSchedule`, `updatePayment`, `deleteLoan`, `deleteBorrower`).
+The Expo app gets a new `src/services/mongoSync.ts` with the same
+signatures, so `StorageContext`'s call sites don't change shape — only
+which sync service they import. The server runs locally during
+development (same pattern as the existing `proxy/sheets_proxy.py`) and can
+be deployed later (Render, Railway, Fly.io, etc.) for access away from a
+home network. This keeps the app's local-first/offline behavior exactly as
+it is today — the backend swap is purely about replacing the Sheets/Apps
+Script half, not `StorageContext`'s AsyncStorage-first design.
 
 ## 4. Comparison at a glance
 
-| | Firestore | Supabase | MongoDB Atlas |
+| | Firestore | Supabase | MongoDB Atlas (C-1: self-hosted API) |
 |---|---|---|---|
 | Matches current nested schema | Good (subcollections) | Requires normalization | Best (embed as-is) |
-| Built-in offline-first sync | **Yes** | No (build it yourself) | Yes, but roadmap risk |
-| Cross-cutting queries (overdue payments, etc.) | Good (collection-group queries) | **Best** (full SQL) | Good (aggregation pipeline) |
-| Works in plain Expo Go (no native build) | **Yes** | Yes | No (needs EAS dev build) |
-| Auth + per-user data isolation | Yes | Yes | Yes |
-| Free-tier fit for this app's scale | Generous | Generous | Limited |
-| Biggest risk | Query-language limits at scale | You own the offline-sync layer | Product-line stability |
+| Built-in offline-first sync | Yes | No (build it yourself) | No (unchanged — `StorageContext` already does this locally) |
+| Cross-cutting queries (overdue payments, etc.) | Good (collection-group queries) | Best (full SQL) | Good (aggregation pipeline) |
+| Works in plain Expo Go (no native build) | Yes | Yes | **Yes** (plain HTTP, no native module) |
+| Auth + per-user data isolation | Yes | Yes | Hand-rolled in the API layer |
+| Free-tier fit for this app's scale | Generous | Generous | Generous (M0 cluster) |
+| Extra ops burden vs. the others | None (managed) | None (managed) | You run/host a small API server |
 
-## 5. Recommendation
+## 5. Decision
 
-**Firestore is the best fit for this specific app**, primarily because it's
-the only option that gives offline-first sync *and* works without adding a
-native-module build step, which matters for a project currently running on
-plain Expo Go/EAS Build with no native modules. Supabase would be the
-stronger choice only if cross-cutting SQL reporting mattered more than
-offline reliability, or if normalizing the data model is itself a goal;
-MongoDB Atlas has the best schema fit but carries product-roadmap risk on
-the exact piece (Device Sync) that would replace `StorageContext`'s current
-job.
+**MongoDB Atlas, via Option C-1 (self-hosted Express API), is what this app
+uses**, chosen 2026-09-15. Firestore would have been the lower-ops choice
+had a managed backend been the deciding factor (see the original reasoning
+above, kept for the record) — but with an Atlas account already created and
+Device Sync/Data API no longer available anyway, C-1 is both the practical
+and the MongoDB-recommended path, and it doesn't cost this app anything it
+relies on today: `StorageContext` already owns local-first/offline behavior
+via AsyncStorage, so a plain REST backend is a full substitute for what
+Sheets was doing, not a downgrade from what Firestore would have done.
 
-If a future migration goes ahead, the natural boundary is: replace
-`src/services/sheetsSync.ts` and the Sheets-specific branches inside
-`src/context/StorageContext.tsx` with a Firestore-backed implementation of
-the *same* `StorageContextValue` interface, so `App.tsx` and every screen
-need zero changes. As part of that work, the ad hoc `postToSheet()` calls
+**Implementation boundary:** a new `server/` Express app (MongoDB Node
+driver) exposes REST routes mirroring `src/services/sheetsSync.ts`'s
+function set; a new `src/services/mongoSync.ts` on the client implements
+the same shape against that API; `src/context/StorageContext.tsx` swaps its
+Sheets-specific calls for the Mongo ones behind the *same*
+`StorageContextValue` interface, so `App.tsx` and every screen need zero
+changes. As part of that work, the ad hoc `postToSheet()`-equivalent calls
 in `BorrowerForm.tsx`, `BorrowerDetail.tsx`, and `DuePaymentsList.tsx`
 (flagged in §1 and in `docs/ARCHITECTURE.md`) should be removed in favor of
-routing everything through `StorageContext`, since Firestore's security
-rules and offline queue only give you consistent guarantees if all writes
-go through one path.
+routing everything through `StorageContext`, so every write goes through
+one path instead of several ad hoc ones.
 
-This document intentionally stops at the proposal/comparison stage — no
-Firestore project, schema, or code has been created yet.
+This document stops at the design/decision stage — implementation (the
+`server/` app, the Atlas cluster connection, and the client-side sync
+service) is tracked separately as it's built.
