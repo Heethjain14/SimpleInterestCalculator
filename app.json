@@ -22,6 +22,7 @@
     },
     "sdkVersion": "57.0.0",
     "extra": {
+      "mongoApiUrl": "http://localhost:4000",
       "sheetsWebappUrl": "https://script.google.com/macros/s/AKfycbylrjggNIMBHdHdLKRFD8oQJ1HKtaamZRo0Tad9KUsjFqvDV2zNdWzjCS8Gu-dkJNM/exec",
       "eas": {
         "projectId": "bf395f96-301b-4dc6-8bc4-fba4c18197cb"

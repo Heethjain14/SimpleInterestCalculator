@@ -36,7 +36,7 @@ function addMonths(date: Date, months: number): Date {
 
 /** Borrower profile screen: loan list, payment tracking, CSV export, and payment recording. */
 export default function BorrowerDetail({ borrower, onBack, onEdit, onSave }: Props) {
-  const { saveBorrower, deleteBorrower } = useStorage();
+  const { saveBorrower, deleteBorrower, deleteLoan: deleteLoanFromServer } = useStorage();
   const { scheduleRemindersForBorrower, cancelRemindersForBorrower } = useNotifications();
   const [expandedLoan, setExpandedLoan] = useState<string | null>(null);
   const [showAddLoan, setShowAddLoan] = useState(false);
@@ -51,17 +51,8 @@ export default function BorrowerDetail({ borrower, onBack, onEdit, onSave }: Pro
         text: 'Delete', style: 'destructive',
         onPress: async () => {
           const updated = { ...current, loans: current.loans.filter(l => l.id !== loan.id) };
-          await saveBorrower(updated);
+          await deleteLoanFromServer(current.id, loan.id);
           await scheduleRemindersForBorrower(updated);
-          try {
-            const url = (globalThis as any).SHEETS_WEBAPP_URL;
-            if (url) {
-              const sheetsSync = (await import('../services/sheetsSync')).default;
-              await sheetsSync.postToSheet(url, { type: 'update_borrower', payload: updated });
-            }
-          } catch (e) {
-            console.warn('Failed to update Sheets after loan delete', e);
-          }
           setCurrent(updated);
           onSave(updated);
         },
@@ -133,16 +124,6 @@ export default function BorrowerDetail({ borrower, onBack, onEdit, onSave }: Pro
     const updated = { ...current, loans: updatedLoans };
     await saveBorrower(updated);
     await scheduleRemindersForBorrower(updated);
-
-    try {
-      const url = (globalThis as any).SHEETS_WEBAPP_URL;
-      if (url) {
-        const sheetsSync = (await import('../services/sheetsSync')).default;
-        await sheetsSync.postToSheet(url, { type: 'update_borrower', payload: updated });
-      }
-    } catch (e) {
-      console.warn('Failed to update Sheets after payment', e);
-    }
 
     setCurrent(updated);
     onSave(updated);

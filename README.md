@@ -5,7 +5,8 @@ borrowers and their loans, generate simple-interest and EMI payment
 schedules, record installment payments (including partial and late
 payments), see overdue installments across the whole portfolio, and view
 aggregate portfolio metrics. Data is stored on-device (AsyncStorage) and can
-optionally be synced to a Google Sheet through a Google Apps Script web app.
+optionally be synced to a MongoDB Atlas cluster through a small self-hosted
+API server (see `server/`).
 
 ## Features
 
@@ -20,17 +21,19 @@ The app is organized as five screens, navigable from the sidebar (tap the
 | **EMI Schedule** | Generates a monthly installment schedule in **Cutting** mode (interest deducted upfront, full principal repaid) or **Adding** mode (interest added on top of principal, split evenly). |
 | **Clients** | Full borrower/loan management: create/edit borrowers, attach loans with an auto-generated payment schedule, record payments (with automatic delay-interest and partial-payment tracking), delete loans/borrowers, and export a loan's statement as CSV. |
 
-Google Sheets sync (optional, off by default until configured) lets you pull
-the full dataset from a spreadsheet (overwriting local data) or push
-individual borrower/loan/payment changes as they happen — see
-[Data flow](#data-flow) and [Google Sheets sync setup](#google-sheets-sync-setup) below.
+MongoDB sync (optional, off by default until you run the API server) lets
+you pull the full dataset from your Atlas cluster (overwriting local data)
+or push individual borrower/loan/payment changes as they happen — see
+[Data flow](#data-flow) and [MongoDB setup](#mongodb-atlas--api-server-setup) below.
+(Google Sheets sync still exists in the codebase but is no longer wired in
+— see the note in [Legacy: Google Sheets sync](#legacy-google-sheets-sync).)
 
 ## Project structure
 
 ```
 App.tsx                       Root shell: sidebar navigation + screen switch
 index.ts                      Expo entry point
-app.json                      Expo config, incl. extra.sheetsWebappUrl
+app.json                      Expo config, incl. extra.mongoApiUrl
 eas.json                      EAS Build profiles
 
 src/
@@ -49,62 +52,61 @@ src/
     PaymentRecorder.tsx          Modal to record an installment payment
     DatePicker.tsx               Cross-platform date input
     ShareResultCard.tsx          Shareable PNG card for Simple Interest results
-    RefreshButton.tsx            Triggers a pull from Google Sheets
+    RefreshButton.tsx            Triggers a pull from the API server
     Sidebar.tsx                  Slide-in navigation drawer
 
-  context/StorageContext.tsx    Borrower/loan state, AsyncStorage + Sheets sync
+  context/StorageContext.tsx    Borrower/loan state, AsyncStorage + Mongo API sync
   hooks/useStorage.ts           Deprecated alias for useStorageContext()
   hooks/useNotifications.ts     Stub for future payment-reminder notifications
   navigation/screens.ts         Screen list + sidebar labels/icons
 
-  services/sheetsSync.ts        HTTP client for the Apps Script web app
+  services/mongoSync.ts         HTTP client for the server/ Express API (active)
+  services/sheetsSync.ts        HTTP client for the old Apps Script web app (legacy, unused)
   utils/duePayments.ts          Overdue-installment logic
   utils/portfolioMetrics.ts     Portfolio aggregate metrics
   utils/format.ts               Currency/date formatting helpers
 
-proxy/sheets_proxy.py         Optional Flask CORS relay (see note below)
+server/                       Express + MongoDB REST API (see MongoDB setup below)
+  src/index.js                  App entry point, starts the HTTP server
+  src/db.js                     MongoDB connection (reads MONGODB_URI from .env)
+  src/routes.js                 REST routes mirroring mongoSync.ts's function set
+  .env.example                  Template for server/.env (gitignored)
+
+proxy/sheets_proxy.py         Legacy optional Flask CORS relay for Sheets (unused)
 proxy/requirements.txt        Python deps for the proxy (flask, requests)
-testing.js                    Standalone Node script to test the Apps Script webapp directly
-docs/GOOGLE_SHEETS_APPS_SCRIPT.md   Apps Script deployment + request/response contract
+testing.js                    Legacy: standalone Node script to test the old Apps Script webapp
+docs/GOOGLE_SHEETS_APPS_SCRIPT.md   Legacy Apps Script contract (kept for reference)
+docs/NOSQL_MIGRATION_PROPOSAL.md    Design record: why MongoDB, and how it's wired in
 docs/ARCHITECTURE.md          Module boundaries and data-flow diagram
 ```
 
 ## Data flow
 
 ```
-UI components  →  StorageContext (AsyncStorage)  →  sheetsSync.ts  →  Google Apps Script  →  Google Sheet
+UI components  →  StorageContext (AsyncStorage)  →  mongoSync.ts  →  server/ (Express)  →  MongoDB Atlas
 ```
 
 - **UI components** call `useStorageContext()` (or the deprecated
   `useStorage()` alias) to read `borrowers` and to call `saveBorrower`,
-  `saveLoan`, `deleteLoan`, `deleteBorrower`, or `refreshFromSheet`.
+  `saveLoan`, `deleteLoan`, `deleteBorrower`, or `refreshFromServer`.
 - **`src/context/StorageContext.tsx`** is the single source of truth. Every
   mutation is written to `AsyncStorage` (key `borrowers_data`) first; syncing
-  to Google Sheets is attempted afterward on a best-effort basis and never
-  blocks or rolls back the local write. `refreshFromSheet` is the only pull
+  to the API server is attempted afterward on a best-effort basis and never
+  blocks or rolls back the local write. `refreshFromServer` is the only pull
   path — it fetches the full dataset and overwrites local state.
-- **`src/services/sheetsSync.ts`** is a thin HTTP client for one Google Apps
-  Script web app. Every request is a **GET** with the JSON payload
-  URL-encoded into a `?payload=` query parameter (not a POST body — this is
-  deliberate; see the comment at the top of `sheetsSync.ts`). Large payment
-  schedules are sent in chunks to stay under the URL length limit.
-- **Google Apps Script** (deployed separately, outside this repo) is
-  expected to route on `payload.type` (`read_all_data`, `add_loan`,
-  `update_payment`, `delete_borrower`, etc.) and read/write a Google Sheet.
-  See [docs/GOOGLE_SHEETS_APPS_SCRIPT.md](./docs/GOOGLE_SHEETS_APPS_SCRIPT.md)
-  for the full contract and a sample script.
-
-**About `proxy/sheets_proxy.py`:** this repo also includes a small Flask app
-that forwards POST requests to the Apps Script URL and relays the response
-with permissive CORS headers. As of now, nothing in the Expo app's code
-calls it — `sheetsSync.ts` talks to the Apps Script URL directly via GET.
-It's provided as an optional relay you can run in front of Apps Script (e.g.
-to add your own auth, hide the Apps Script URL, or support POST-based
-clients) — see [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for details.
-It is not required to run the app.
+- **`src/services/mongoSync.ts`** is a thin HTTP client (plain REST/JSON,
+  one function per operation) for the `server/` Express API.
+- **`server/`** is a small Express app (see [MongoDB setup](#mongodb-atlas--api-server-setup)
+  below) that reads/writes a `borrowers` collection in your MongoDB Atlas
+  cluster via the official `mongodb` driver. Each borrower document embeds
+  its loans, and each loan embeds its payments — the same shape as the
+  app's own `Borrower`/`Loan`/`Payment` types, so no schema translation is
+  needed.
 
 For the full module-by-module breakdown and a diagram, see
-[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
+[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md). For why MongoDB was chosen
+over Firestore/Supabase and what was ruled out along the way, see
+[docs/NOSQL_MIGRATION_PROPOSAL.md](./docs/NOSQL_MIGRATION_PROPOSAL.md).
 
 ## Setup
 
@@ -127,48 +129,52 @@ directly.)
 
 Without any further configuration, the app works fully offline: everything
 is persisted to on-device `AsyncStorage` and the Clients/Dashboard/Due
-Payments screens work against local data. Google Sheets sync is optional.
+Payments screens work against local data. MongoDB sync is optional.
 
-### Google Sheets sync setup (optional)
+### MongoDB Atlas + API server setup (optional)
 
-1. Deploy a Google Apps Script web app that implements the request contract
-   in [docs/GOOGLE_SHEETS_APPS_SCRIPT.md](./docs/GOOGLE_SHEETS_APPS_SCRIPT.md)
-   (create the sheet, add the script, deploy as a web app).
-2. Set the deployed URL in `app.json` under `expo.extra.sheetsWebappUrl`:
+1. Create a free cluster at [cloud.mongodb.com](https://cloud.mongodb.com)
+   and get its connection string (Atlas dashboard → Database → Connect →
+   Drivers → copy the `mongodb+srv://...` URI, then substitute in your
+   database user's username/password).
+2. Set it up:
 
-   ```json
-   {
-     "expo": {
-       "extra": {
-         "sheetsWebappUrl": "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec"
-       }
-     }
-   }
+   ```bash
+   cd server
+   npm install
+   cp .env.example .env
+   # edit .env: paste your MONGODB_URI, set MONGODB_DB / PORT if you want non-defaults
+   npm start                         # serves on http://localhost:4000
    ```
 
-3. Restart the Expo dev server. `App.tsx` reads this value via
-   `expo-constants` at startup and assigns it to
-   `globalThis.SHEETS_WEBAPP_URL`, which `StorageContext` and a few
-   components read before every sync call.
-4. Use the **Refresh Sheets** button (Dashboard, Due Payments, or Clients
-   screen) to pull the full dataset, or just start creating borrowers/loans —
+   The database and `borrowers` collection are created automatically on the
+   first write — nothing to pre-create in Atlas.
+3. Point the app at the server: set `expo.extra.mongoApiUrl` in `app.json`.
+   The default (`http://localhost:4000`) works when running `expo start --web`
+   on the same machine as the server. **On a physical device via Expo Go,
+   `localhost` means the phone itself** — use your computer's LAN IP instead
+   (e.g. `http://192.168.1.5:4000`), and make sure the phone and computer are
+   on the same network.
+4. Restart the Expo dev server. `App.tsx` reads this value via
+   `expo-constants` at startup and assigns it to `globalThis.MONGO_API_URL`,
+   which `StorageContext` reads before every sync call.
+5. Use the **Refresh** button (Dashboard, Due Payments, or Clients screen)
+   to pull the full dataset, or just start creating borrowers/loans —
    changes push automatically in the background.
 
-### Running the optional Python proxy
+The server has no auth in front of it yet — fine for local development or a
+private network, but add an API key or similar before deploying it
+somewhere publicly reachable.
 
-Only needed if you choose to route Sheets requests through your own relay
-instead of hitting the Apps Script URL directly from the app:
+### Legacy: Google Sheets sync
 
-```bash
-cd proxy
-pip install -r requirements.txt
-python sheets_proxy.py            # serves on http://127.0.0.1:5000
-```
-
-Configure it via environment variables: `APPS_SCRIPT_URL` (defaults to the
-URL hard-coded in `sheets_proxy.py`), `PORT` (default `5000`),
-`CORS_ALLOW_ORIGIN`/`CORS_ALLOW_METHODS`/`CORS_ALLOW_HEADERS`, and
-`FLASK_DEBUG`.
+Earlier versions of this app synced to a Google Sheet through a Google Apps
+Script web app instead of MongoDB (see
+[docs/NOSQL_MIGRATION_PROPOSAL.md](./docs/NOSQL_MIGRATION_PROPOSAL.md) for
+why it was replaced). That code — `src/services/sheetsSync.ts`,
+`docs/GOOGLE_SHEETS_APPS_SCRIPT.md`, `proxy/sheets_proxy.py`, `testing.js`
+— is still in the repo for reference but **is no longer called from
+anywhere in the app**; `StorageContext` talks to `mongoSync.ts` exclusively.
 
 ### Build for production (EAS)
 
@@ -181,18 +187,14 @@ The EAS project ID lives in `app.json` (`expo.extra.eas.projectId`) and
 
 ## Testing
 
-There's no automated test suite for the React Native app itself. To verify
-a deployed Google Apps Script webapp independently of the app (useful when
-setting up or debugging Sheets sync):
+There's no automated test suite for the React Native app itself. To sanity
+check the API server directly (useful when setting up or debugging Mongo
+sync), hit its routes with `curl` once it's running, e.g.
+`curl http://localhost:4000/health` and `curl http://localhost:4000/api/data`.
 
-```bash
-node testing.js <webapp-url>              # read-only checks (read_all_data, read_all_borrowers, error handling)
-node testing.js <webapp-url> --mutate     # also runs an add/update/delete round-trip against a throwaway test loan
-```
-
-Requires Node 18+ for the built-in `fetch`. The script deliberately uses GET
-(not POST) for the same reason `sheetsSync.ts` does — see the comment at the
-top of `testing.js`.
+`testing.js` (a standalone Node script exercising the legacy Google Apps
+Script webapp) still works against a deployed Apps Script if you have one,
+but doesn't apply to the current MongoDB backend.
 
 ## Interest formulas
 

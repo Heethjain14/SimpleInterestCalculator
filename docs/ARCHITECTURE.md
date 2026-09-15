@@ -10,19 +10,21 @@ the first time.
 ```
 index.ts                        Expo entry point (registerRootComponent)
 App.tsx                         Root shell: sidebar nav + screen switch, reads
-                                 expo.extra.sheetsWebappUrl into globalThis
+                                 expo.extra.mongoApiUrl into globalThis
 src/navigation/screens.ts       Screen union type + sidebar nav item metadata
 src/screens/                    Full-page views wired into the screen switch
 src/components/                 Reusable UI widgets shared across screens
 src/context/StorageContext.tsx  Single source of truth for borrower/loan state
 src/hooks/useStorage.ts         Deprecated alias for useStorageContext()
 src/hooks/useNotifications.ts   No-op stub (reminders not implemented yet)
-src/services/sheetsSync.ts      HTTP client for the Google Apps Script webapp
+src/services/mongoSync.ts       HTTP client for the server/ Express API (active)
+src/services/sheetsSync.ts      HTTP client for the old Apps Script webapp (legacy, unused)
 src/utils/                      Pure helper functions (no React, no I/O)
-proxy/sheets_proxy.py           Standalone Flask CORS relay (see note below)
-docs/GOOGLE_SHEETS_APPS_SCRIPT.md  Server-side (Apps Script) contract
-testing.js                      Node script that exercises the deployed
-                                 Apps Script webapp directly, bypassing the app
+server/                         Express + MongoDB REST API (see note below)
+proxy/sheets_proxy.py           Legacy Flask CORS relay for Sheets (unused, see note)
+docs/GOOGLE_SHEETS_APPS_SCRIPT.md  Legacy Apps Script contract (kept for reference)
+docs/NOSQL_MIGRATION_PROPOSAL.md   Why MongoDB was chosen and how it's wired in
+testing.js                      Legacy: exercises the old Apps Script webapp directly
 ```
 
 ## Layers and responsibilities
@@ -52,7 +54,7 @@ data in via props and report changes via callbacks.
 
 `SimpleInterestCalculator.tsx` and `EmiCalculator.tsx` are self-contained —
 they compute results locally (simple interest / EMI schedule math) and never
-touch `StorageContext` or Sheets sync, since calculator results aren't
+touch `StorageContext` or the API sync, since calculator results aren't
 persisted.
 
 ### State management (`src/context/StorageContext.tsx`)
@@ -62,14 +64,15 @@ talks to `AsyncStorage` directly. It holds the in-memory `borrowers: Borrower[]`
 array and exposes CRUD + sync operations through `useStorageContext()`:
 
 - `saveBorrower` / `saveLoan` — persist to AsyncStorage first, then attempt a
-  best-effort push to Google Sheets (failures are logged and swallowed, not
+  best-effort push to the API server (failures are logged and swallowed, not
   surfaced to the UI — the local write already succeeded).
 - `deleteLoan` / `deleteBorrower` — same local-first, sync-best-effort pattern.
-  `deleteLoan` also drops the borrower entirely once their last loan is removed.
-- `refreshFromSheet` — the only *pull* operation; it fetches the full dataset
-  from Sheets and overwrites both in-memory state and AsyncStorage. Returns a
-  discriminated `RefreshResult` so callers (`RefreshButton`) can show a
-  specific error instead of a generic failure.
+  `deleteLoan` also drops the borrower entirely once their last loan is removed
+  (both locally and, per the server's own rule, in MongoDB).
+- `refreshFromServer` — the only *pull* operation; it fetches the full
+  dataset from the API server and overwrites both in-memory state and
+  AsyncStorage. Returns a discriminated `RefreshResult` so callers
+  (`RefreshButton`) can show a specific error instead of a generic failure.
 - `getBorrower` — synchronous lookup against the in-memory array.
 
 `src/hooks/useStorage.ts` is a thin, deprecated wrapper around
@@ -77,46 +80,51 @@ array and exposes CRUD + sync operations through `useStorageContext()`:
 context existed; both are used interchangeably across `src/screens/` and
 `src/components/`.
 
-A few components (`BorrowerForm.tsx`, `BorrowerDetail.tsx`,
-`DuePaymentsList.tsx`) additionally call `sheetsSync.postToSheet()` directly
-with ad hoc `{ type: 'add_borrower' | 'update_borrower', payload }` requests,
-*outside* of `StorageContext`'s own sync calls. This is existing behavior,
-not a bug introduced by this doc — worth knowing if you're debugging
-duplicate or unexpected Sheets writes.
+Every write goes through `StorageContext` — `BorrowerForm.tsx`,
+`BorrowerDetail.tsx`, and `DuePaymentsList.tsx` previously also called
+`sheetsSync.postToSheet()` directly with ad hoc payloads outside of
+`StorageContext`'s own sync calls; those ad hoc calls were removed during
+the MongoDB migration (they were redundant with the `saveBorrower`/
+`deleteLoan` calls already made right next to them) so there's now exactly
+one write path.
 
-### Services / sync layer (`src/services/sheetsSync.ts`)
+### Services / sync layer (`src/services/mongoSync.ts`)
 
-A stateless HTTP client for one Google Apps Script web app. Every function
-sends the same shape: a GET request whose entire JSON payload is
-URL-encoded into a single `?payload=` query parameter — **not** a POST body.
-This is deliberate (see the file-level comment in `sheetsSync.ts` and in
-`proxy/sheets_proxy.py`): Apps Script's `/exec` endpoint 302-redirects to a
-`script.googleusercontent.com` echo URL, and that redirect only re-runs your
-script if the client follows it with GET. Because GET URLs cap out around
-~2000 characters, `writePaymentSchedule` chunks large payment schedules into
-multiple requests (first chunk clears the sheet, later chunks append).
+A stateless HTTP client for the `server/` Express API: one `fetch` call per
+operation, plain JSON over REST (no URL-length workaround needed, unlike the
+old Sheets integration, since requests go straight to a server you control
+instead of through Google Apps Script's GET-only redirect quirk).
 
-`sheetsSync` exports one function per operation (`fetchAllData`, `addLoan`,
-`updateLoanInfo`, `updateBorrowerInfo`, `writePaymentSchedule`,
-`updatePayment`, `deleteLoan`, `deleteBorrower`, ...) plus a generic
-`postToSheet` escape hatch used by the ad hoc call sites mentioned above.
-The full list of `type` values sent to the Apps Script and the expected
-response shape are documented in
-[`docs/GOOGLE_SHEETS_APPS_SCRIPT.md`](./GOOGLE_SHEETS_APPS_SCRIPT.md).
+`mongoSync` exports one function per operation (`fetchAllData`,
+`fetchAllBorrowers`, `fetchLoan`, `addLoan`, `updateLoanInfo`,
+`updateBorrowerInfo`, `writePaymentSchedule`, `updatePayment`, `deleteLoan`,
+`deleteBorrower`) matching `server/src/routes.js`'s routes 1:1.
 
-### The Python proxy (`proxy/sheets_proxy.py`)
+### The API server (`server/`)
 
-A minimal Flask app (`proxy()` route) that accepts a POST at `/`, forwards
-the raw body to `APPS_SCRIPT_URL` as a POST, and relays the response back
-with permissive CORS headers. **It is not currently called from any code
-path in the Expo app** — `sheetsSync.ts` talks to the Apps Script URL
-directly via GET, and nothing in `src/screens/`, `src/components/`,
-`src/context/`, or `src/hooks/` references `localhost`, a proxy port, or
-this file. Treat it as an optional,
-separately-run relay you can put in front of Apps Script (for example, if
-you need POST semantics, want to hide the Apps Script URL from the client
-bundle, or want to add your own auth/rate-limiting) rather than a required
-part of the current data flow.
+An Express app (`server/src/index.js`) that connects to MongoDB Atlas via
+the official `mongodb` driver (`server/src/db.js`, reading `MONGODB_URI`
+from `server/.env`) and exposes REST routes (`server/src/routes.js`) that
+read/write one `borrowers` collection — each document embeds its `loans`,
+each loan embeds its `payments`, mirroring the app's own nested types
+exactly. It's a separate Node process you run yourself (`cd server && npm
+start`), the same way `proxy/sheets_proxy.py` was a separate Python process
+— see [the README's setup section](../README.md#mongodb-atlas--api-server-setup).
+
+### Legacy: `src/services/sheetsSync.ts` and `proxy/sheets_proxy.py`
+
+Both remain in the repo but **are no longer called from anywhere in the
+app**. `sheetsSync.ts` was a stateless HTTP client for a Google Apps Script
+web app (GET requests with the JSON payload URL-encoded into a `?payload=`
+query param — a workaround for how Apps Script's redirect-echo behavior
+only replays real output on GET, documented in the file's header comment).
+`sheets_proxy.py` was a Flask relay that forwarded POST requests to that
+Apps Script URL with permissive CORS headers; it was already unwired before
+the MongoDB migration. See
+[docs/NOSQL_MIGRATION_PROPOSAL.md](./NOSQL_MIGRATION_PROPOSAL.md) for why
+Sheets was replaced, and
+[docs/GOOGLE_SHEETS_APPS_SCRIPT.md](./GOOGLE_SHEETS_APPS_SCRIPT.md) for the
+Apps Script contract if you ever need to reference it.
 
 ### Hooks (`src/hooks/`)
 
@@ -145,35 +153,33 @@ flowchart LR
     UI["Screens & components\n(Dashboard, BorrowerList,\nBorrowerDetail, DuePaymentsList, ...)"]
     Ctx["StorageContext\n(src/context/StorageContext.tsx)"]
     Async[("AsyncStorage\n(borrowers_data key)")]
-    Sync["sheetsSync.ts\n(GET + JSON-in-query client)"]
-    Apps[("Google Apps Script\nweb app /exec")]
-    Sheet[("Google Sheet\n(one tab per loan)")]
-    Proxy["proxy/sheets_proxy.py\n(Flask, POST relay)"]
+    Sync["mongoSync.ts\n(REST/JSON client)"]
+    Api["server/\n(Express, port 4000)"]
+    Mongo[("MongoDB Atlas\nborrowers collection")]
 
-    UI -- "saveBorrower / saveLoan\ndeleteLoan / deleteBorrower\nrefreshFromSheet" --> Ctx
+    UI -- "saveBorrower / saveLoan\ndeleteLoan / deleteBorrower\nrefreshFromServer" --> Ctx
     Ctx <--> Async
     Ctx -- "best-effort push\n(add/update/delete)" --> Sync
-    Ctx -- "pull on refreshFromSheet" --> Sync
-    Sync -- "GET ?payload=..." --> Apps
-    Apps --> Sheet
-    Proxy -. "not wired in today\navailable as an optional relay" .-> Apps
+    Ctx -- "pull on refreshFromServer" --> Sync
+    Sync -- "REST over JSON" --> Api
+    Api --> Mongo
 ```
 
 Reads and writes are both **local-first**: every mutation updates
-AsyncStorage (and in-memory state) before attempting a Sheets sync, and a
-failed sync is caught, logged with `console.warn`, and never rolled back or
-surfaced as an error to the user — the assumption is that Sheets sync is a
-convenience layer, and the phone's local copy is the durable source of truth
-between sessions. The only way stale local data gets corrected from Sheets
-is the explicit pull via `refreshFromSheet` (the "Refresh Sheets" button),
-which overwrites local state wholesale.
+AsyncStorage (and in-memory state) before attempting a sync to the API
+server, and a failed sync is caught, logged with `console.warn`, and never
+rolled back or surfaced as an error to the user — the assumption is that
+server sync is a convenience layer, and the phone's local copy is the
+durable source of truth between sessions. The only way stale local data
+gets corrected from the server is the explicit pull via `refreshFromServer`
+(the "Refresh" button), which overwrites local state wholesale.
 
 ## Screens at a glance
 
 | Screen key | Component | Reads | Writes |
 |---|---|---|---|
 | `dashboard` | `Dashboard` | `borrowers` (via `computePortfolioMetrics`) | — (refresh only) |
-| `due` | `DuePaymentsList` | `borrowers` (via `getDuePayments`) | `saveBorrower`, ad hoc `update_borrower` push |
+| `due` | `DuePaymentsList` | `borrowers` (via `getDuePayments`) | `saveBorrower` |
 | `simple` | `SimpleInterestCalculator` | local component state only | none (not persisted) |
 | `emi` | `EmiCalculator` | local component state only | none (not persisted) |
-| `clients` | `BorrowerList` → `BorrowerForm` / `BorrowerDetail` | `borrowers` | `saveBorrower`, `deleteBorrower`, `deleteLoan`, ad hoc `add_borrower`/`update_borrower` pushes |
+| `clients` | `BorrowerList` → `BorrowerForm` / `BorrowerDetail` | `borrowers` | `saveBorrower`, `deleteBorrower`, `deleteLoan` |

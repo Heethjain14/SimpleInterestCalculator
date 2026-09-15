@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Borrower, Loan } from '../types';
-import sheetsSync from '../services/sheetsSync';
+import mongoSync from '../services/mongoSync';
 
 const STORAGE_KEY = 'borrowers_data';
 
@@ -20,17 +20,17 @@ interface StorageContextValue {
   deleteBorrower: (borrowerId: string) => Promise<void>;
   getBorrower: (id: string) => Borrower | null;
   reload: () => Promise<void>;
-  /** Pulls the full dataset from Google Sheets and overwrites local + AsyncStorage state. */
-  refreshFromSheet: () => Promise<RefreshResult>;
+  /** Pulls the full dataset from the API server and overwrites local + AsyncStorage state. */
+  refreshFromServer: () => Promise<RefreshResult>;
 }
 
 const StorageContext = createContext<StorageContextValue | null>(null);
 
-function getSheetsUrl(): string | undefined {
-  return (globalThis as any).SHEETS_WEBAPP_URL;
+function getApiUrl(): string | undefined {
+  return (globalThis as any).MONGO_API_URL;
 }
 
-/** Shared borrower storage backed by AsyncStorage with optional Google Sheets sync. */
+/** Shared borrower storage backed by AsyncStorage with optional MongoDB API sync. */
 export function StorageProvider({ children }: { children: ReactNode }) {
   const [borrowers, setBorrowers] = useState<Borrower[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,41 +48,41 @@ export function StorageProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const refreshFromSheet = useCallback(async (): Promise<RefreshResult> => {
-    const url = getSheetsUrl();
+  const refreshFromServer = useCallback(async (): Promise<RefreshResult> => {
+    const url = getApiUrl();
     if (!url) {
-      console.error('[Sheets] Refresh aborted: no URL configured in app.json');
+      console.error('[Mongo] Refresh aborted: no API URL configured in app.json');
       return { ok: false, reason: 'no_url' };
     }
 
     try {
       setLoading(true);
-      const response = await sheetsSync.fetchAllData(url);
+      const response = await mongoSync.fetchAllData(url);
 
       if (!response) {
-        console.error('[Sheets] No response received from Google Sheets (fetch returned null)');
+        console.error('[Mongo] No response received from the API server (fetch returned null)');
         return { ok: false, reason: 'network' };
       }
       if (response.ok === false) {
-        console.error('[Sheets] Apps Script returned error:', response.message ?? response);
+        console.error('[Mongo] API returned error:', response.message ?? response);
         return { ok: false, reason: response.reason ?? 'api_error' };
       }
 
       const nextBorrowers = response.borrowers;
       if (!Array.isArray(nextBorrowers)) {
-        console.error('[Sheets] Expected borrower array but got:', typeof nextBorrowers, nextBorrowers);
-        console.error('[Sheets] Full raw response:', response);
+        console.error('[Mongo] Expected borrower array but got:', typeof nextBorrowers, nextBorrowers);
+        console.error('[Mongo] Full raw response:', response);
         return { ok: false, reason: 'invalid_response' };
       }
 
       setBorrowers(nextBorrowers);
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextBorrowers));
       if (__DEV__) {
-        console.log('[Sheets] Refresh successful, loaded', nextBorrowers.length, 'borrowers');
+        console.log('[Mongo] Refresh successful, loaded', nextBorrowers.length, 'borrowers');
       }
       return { ok: true, count: nextBorrowers.length };
     } catch (e) {
-      console.error('[Sheets] Unexpected error during fetch:', e);
+      console.error('[Mongo] Unexpected error during fetch:', e);
       return { ok: false, reason: 'network' };
     } finally {
       setLoading(false);
@@ -117,31 +117,39 @@ export function StorageProvider({ children }: { children: ReactNode }) {
     await persistLocal(updated);
 
     try {
-      const url = getSheetsUrl();
+      const url = getApiUrl();
       if (!url) return;
 
       if (existingLoan) {
-        await sheetsSync.updateLoanInfo(url, {
+        await mongoSync.updateLoanInfo(url, {
           loanId: loan.id,
           principal: loan.principal,
           interestRate: loan.interestRate,
           startDate: loan.startDate,
+          tenure: loan.tenure,
+          nextDueDate: loan.nextDueDate,
+          repaymentMode: loan.repaymentMode,
+          loanNotes: loan.notes,
         });
-        await sheetsSync.writePaymentSchedule(url, loan.id, loan.payments ?? []);
+        await mongoSync.writePaymentSchedule(url, loan.id, loan.payments ?? []);
       } else {
-        const result = await sheetsSync.addLoan(url, {
+        const result = await mongoSync.addLoan(url, {
           loanId: loan.id,
           borrowerId: borrower.id,
           borrowerName: borrower.name,
           phone: borrower.phone,
-          notes: borrower.notes,
+          borrowerNotes: borrower.notes,
           createdAt: borrower.createdAt,
           principal: loan.principal,
           interestRate: loan.interestRate,
           startDate: loan.startDate,
+          tenure: loan.tenure,
+          nextDueDate: loan.nextDueDate,
+          repaymentMode: loan.repaymentMode,
+          loanNotes: loan.notes,
           payments: loan.payments ?? [],
         });
-        // If the sheet generated ids (fields were blank locally), store them back.
+        // If the server generated ids (fields were blank locally), store them back.
         if (result?.ok) {
           const withIds = updated.map(b => {
             if (b.id !== borrowerId) return b;
@@ -156,22 +164,22 @@ export function StorageProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch (e) {
-      console.warn('Sheets sync failed (will retry later)', e);
+      console.warn('API sync failed (will retry later)', e);
     }
   };
 
   /**
-   * Saves a borrower: creates it locally + on Sheets if new (via the
+   * Saves a borrower: creates it locally + on the server if new (via the
    * first loan, which carries borrower fields), pushes borrower-level
-   * field changes (name/phone/notes) to every existing loan sheet, and
+   * field changes (name/phone/notes) for every existing loan they have, and
    * saves each loan.
    */
   const saveBorrower = async (borrower: Borrower) => {
     const existing = borrowers.find(b => b.id === borrower.id);
 
     if (!existing) {
-      // Brand-new borrower: save locally, then create sheets for each loan
-      // (addLoan carries the borrower fields on every sheet it creates).
+      // Brand-new borrower: save locally, then create each loan on the server
+      // (addLoan carries the borrower fields on the document it creates).
       await persistLocal([...borrowers, borrower]);
       for (const loan of borrower.loans) {
         await saveLoanForNewBorrower(borrower, loan);
@@ -180,14 +188,14 @@ export function StorageProvider({ children }: { children: ReactNode }) {
     }
 
     // Existing borrower: update local copy, push borrower-level field
-    // changes to every loan sheet they have, then save each loan.
+    // changes to the server, then save each loan.
     const updated = borrowers.map(b => (b.id === borrower.id ? borrower : b));
     await persistLocal(updated);
 
     try {
-      const url = getSheetsUrl();
+      const url = getApiUrl();
       if (url) {
-        await sheetsSync.updateBorrowerInfo(url, {
+        await mongoSync.updateBorrowerInfo(url, {
           borrowerId: borrower.id,
           name: borrower.name,
           phone: borrower.phone,
@@ -195,7 +203,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
         });
       }
     } catch (e) {
-      console.warn('Sheets sync failed (will retry later)', e);
+      console.warn('API sync failed (will retry later)', e);
     }
 
     for (const loan of borrower.loans) {
@@ -203,21 +211,25 @@ export function StorageProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  /** Internal: create the sheet for one loan belonging to a borrower that doesn't exist on Sheets yet. */
+  /** Internal: create the server-side document for one loan belonging to a borrower that doesn't exist there yet. */
   const saveLoanForNewBorrower = async (borrower: Borrower, loan: Loan) => {
     try {
-      const url = getSheetsUrl();
+      const url = getApiUrl();
       if (!url) return;
-      const result = await sheetsSync.addLoan(url, {
+      const result = await mongoSync.addLoan(url, {
         loanId: loan.id,
         borrowerId: borrower.id,
         borrowerName: borrower.name,
         phone: borrower.phone,
-        notes: borrower.notes,
+        borrowerNotes: borrower.notes,
         createdAt: borrower.createdAt,
         principal: loan.principal,
         interestRate: loan.interestRate,
         startDate: loan.startDate,
+        tenure: loan.tenure,
+        nextDueDate: loan.nextDueDate,
+        repaymentMode: loan.repaymentMode,
+        loanNotes: loan.notes,
         payments: loan.payments ?? [],
       });
       if (result?.ok && (result.loanId !== loan.id || result.borrowerId !== borrower.id)) {
@@ -235,7 +247,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
         });
       }
     } catch (e) {
-      console.warn('Sheets sync failed (will retry later)', e);
+      console.warn('API sync failed (will retry later)', e);
     }
   };
 
@@ -246,10 +258,10 @@ export function StorageProvider({ children }: { children: ReactNode }) {
     await persistLocal(updated);
 
     try {
-      const url = getSheetsUrl();
-      if (url) await sheetsSync.deleteLoan(url, loanId);
+      const url = getApiUrl();
+      if (url) await mongoSync.deleteLoan(url, loanId);
     } catch (e) {
-      console.warn('Sheets delete failed (will retry later)', e);
+      console.warn('API delete failed (will retry later)', e);
     }
   };
 
@@ -258,10 +270,10 @@ export function StorageProvider({ children }: { children: ReactNode }) {
     await persistLocal(updated);
 
     try {
-      const url = getSheetsUrl();
-      if (url) await sheetsSync.deleteBorrower(url, borrowerId);
+      const url = getApiUrl();
+      if (url) await mongoSync.deleteBorrower(url, borrowerId);
     } catch (e) {
-      console.warn('Sheets delete failed (will retry later)', e);
+      console.warn('API delete failed (will retry later)', e);
     }
   };
 
@@ -269,7 +281,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
 
   return (
     <StorageContext.Provider
-      value={{ borrowers, loading, saveBorrower, saveLoan, deleteLoan, deleteBorrower, getBorrower, reload: load, refreshFromSheet }}
+      value={{ borrowers, loading, saveBorrower, saveLoan, deleteLoan, deleteBorrower, getBorrower, reload: load, refreshFromServer }}
     >
       {children}
     </StorageContext.Provider>

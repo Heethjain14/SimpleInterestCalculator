@@ -1,3 +1,10 @@
+> **Legacy:** the app now syncs to MongoDB Atlas via `server/` instead of
+> Google Sheets — see the README's
+> [MongoDB Atlas + API server setup](../README.md#mongodb-atlas--api-server-setup)
+> and [docs/NOSQL_MIGRATION_PROPOSAL.md](./NOSQL_MIGRATION_PROPOSAL.md) for
+> why. This document is kept for reference; `src/services/sheetsSync.ts` is
+> no longer called from anywhere in the app.
+
 Google Sheets Apps Script webapp for SimpleInterestCalculator
 
 1) Create a new Google Sheet.

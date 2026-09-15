@@ -152,18 +152,8 @@
           : (initial?.loans ?? []),
       };
 
-      // Notifications are disabled; storage sync will handle Google Sheets updates.
+      // Notifications are disabled; StorageContext.saveBorrower (called by onSave) handles server sync.
       await scheduleRemindersForBorrower(borrower);
-      // After saving locally, attempt to push this borrower to Google Sheets webapp
-      try {
-        const url = (globalThis as any).SHEETS_WEBAPP_URL;
-        if (url) {
-          const sheetsSync = (await import('../services/sheetsSync')).default;
-          await sheetsSync.postToSheet(url, { type: 'add_borrower', payload: borrower });
-        }
-      } catch (e) {
-        console.warn('Failed to push borrower to Sheets', e);
-      }
       onSave(borrower);
     };
 

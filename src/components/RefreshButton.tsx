@@ -9,20 +9,20 @@ interface Props {
 type RefreshFailure = Extract<RefreshResult, { ok: false }>;
 
 const ERROR_MESSAGES: Record<RefreshFailure['reason'], string> = {
-  no_url: 'Google Sheets URL is not configured in app.json.',
-  network: 'Network error while contacting Google Sheets.',
-  invalid_response: 'Sheets returned an unexpected response format.',
-  api_error: 'Sheets API reported an error. Check your Apps Script deployment.',
+  no_url: 'API server URL is not configured in app.json.',
+  network: 'Network error while contacting the API server.',
+  invalid_response: 'The API server returned an unexpected response format.',
+  api_error: 'The API server reported an error. Check that it is running and reachable.',
 };
 
-/** Pulls latest borrower data from Google Sheets with user feedback. */
+/** Pulls the latest borrower data from the API server with user feedback. */
 export default function RefreshButton({ compact }: Props) {
-  const { refreshFromSheet } = useStorageContext();
+  const { refreshFromServer } = useStorageContext();
   const [refreshing, setRefreshing] = React.useState(false);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    const result = await refreshFromSheet();
+    const result = await refreshFromServer();
     setRefreshing(false);
 
     if (__DEV__) {
@@ -33,8 +33,8 @@ export default function RefreshButton({ compact }: Props) {
       Alert.alert(
         'Refresh complete',
         result.count === 0
-          ? 'Connected successfully. No borrower sheets found in the workbook yet.'
-          : `Loaded ${result.count} borrower${result.count !== 1 ? 's' : ''} from Google Sheets.`,
+          ? 'Connected successfully. No borrowers found on the server yet.'
+          : `Loaded ${result.count} borrower${result.count !== 1 ? 's' : ''} from the server.`,
       );
       return;
     }
@@ -51,7 +51,7 @@ export default function RefreshButton({ compact }: Props) {
       {refreshing ? (
         <ActivityIndicator size="small" color="#1d4ed8" />
       ) : (
-        <Text style={styles.text}>{compact ? '↻' : 'Refresh Sheets'}</Text>
+        <Text style={styles.text}>{compact ? '↻' : 'Refresh'}</Text>
       )}
     </TouchableOpacity>
   );

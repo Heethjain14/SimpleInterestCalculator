@@ -8,7 +8,6 @@ import { getDuePayments, DuePaymentItem } from '../utils/duePayments';
 import { formatCurrency, formatDateIso } from '../utils/format';
 import PaymentRecorder from '../components/PaymentRecorder';
 import RefreshButton from '../components/RefreshButton';
-import sheetsSync from '../services/sheetsSync';
 import { useNotifications } from '../hooks/useNotifications';
 import { Borrower, Loan, Payment } from '../types';
 
@@ -48,15 +47,6 @@ export default function DuePaymentsList({ onOpenClient }: Props) {
     const updated: Borrower = { ...borrower, loans: updatedLoans };
     await saveBorrower(updated);
     await scheduleRemindersForBorrower(updated);
-
-    try {
-      const url = (globalThis as any).SHEETS_WEBAPP_URL;
-      if (url) {
-        await sheetsSync.postToSheet(url, { type: 'update_borrower', payload: updated });
-      }
-    } catch (e) {
-      console.warn('Failed to update Sheets after payment', e);
-    }
 
     setRecording(null);
     Alert.alert('Success', 'Payment recorded successfully');

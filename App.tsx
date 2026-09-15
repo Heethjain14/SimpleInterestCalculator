@@ -16,7 +16,7 @@ import { Screen, SCREEN_SUBTITLES, NAV_ITEMS } from './src/navigation/screens';
 export type { CalculationResult } from './src/screens/SimpleInterestCalculator';
 
 const _extra = (Constants as any).expoConfig?.extra ?? (Constants as any).manifest?.extra ?? {};
-(globalThis as any).SHEETS_WEBAPP_URL = _extra.sheetsWebappUrl ?? (globalThis as any).SHEETS_WEBAPP_URL ?? '';
+(globalThis as any).MONGO_API_URL = _extra.mongoApiUrl ?? (globalThis as any).MONGO_API_URL ?? '';
 
 function AppShell() {
   const [screen, setScreen] = useState<Screen>('dashboard');
