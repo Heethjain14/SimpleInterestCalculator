@@ -1,32 +1,49 @@
-# Simple Interest Calculator
+# Portfolio Ledger
 
-A React Native (Expo) app for managing a small lending/loan portfolio: track
-borrowers and their loans, generate simple-interest and EMI payment
-schedules, record installment payments (including partial and late
-payments), see overdue installments across the whole portfolio, and view
-aggregate portfolio metrics. Data is stored on-device (AsyncStorage) and can
-optionally be synced to a MongoDB Atlas cluster through a small self-hosted
-API server (see `server/`).
+A mobile-first loan management app for individual and small-scale lenders,
+built with React Native (Expo) and a self-hosted MongoDB API. It replaces
+paper ledgers and spreadsheets with a structured, at-a-glance record of who
+owes what, what's overdue, and what's already been collected.
+
+Data is stored on-device (AsyncStorage) first and syncs in the background to
+a small self-hosted API backed by MongoDB Atlas — the app is fully usable
+offline, and the backend is optional.
 
 ## Features
 
-The app is organized as five screens, navigable from the sidebar (tap the
-☰ button):
+Five screens, reachable from the sidebar drawer (tap ☰):
 
 | Screen | What it does |
 |---|---|
-| **Dashboard** | Portfolio overview: total exposure, weighted average interest rate, outstanding vs. collected amounts, collection rate, overdue amount/count, and active loan/borrower counts (`src/utils/portfolioMetrics.ts`). |
-| **Due Payments** | Every overdue, not-fully-settled installment across all borrowers, sorted most-overdue first, with one-tap payment recording and a jump to the borrower's profile (`src/utils/duePayments.ts`). |
-| **Simple Interest** | Calculates `interest = (principal × rate% × days) / 3000` (30-day month convention) over a date range and renders a shareable result card you can export as a PNG. |
+| **Dashboard** | Portfolio overview — total exposure, weighted average interest rate, outstanding vs. collected amounts, collection rate, overdue amount/count, active loan/borrower counts, and a due-soon preview. |
+| **Due Payments** | Every overdue, not-fully-settled installment across all borrowers, sorted most-overdue first, with one-tap payment recording and a jump to the borrower's profile. |
+| **Simple Interest** | Calculates simple interest over a date range and renders a shareable result card you can export as a PNG. |
 | **EMI Schedule** | Generates a monthly installment schedule in **Cutting** mode (interest deducted upfront, full principal repaid) or **Adding** mode (interest added on top of principal, split evenly). |
-| **Clients** | Full borrower/loan management: create/edit borrowers, attach loans with an auto-generated payment schedule, record payments (with automatic delay-interest and partial-payment tracking), delete loans/borrowers, and export a loan's statement as CSV. |
+| **Clients** | Full borrower/loan management — create/edit borrowers, attach loans with an auto-generated payment schedule, record payments (with automatic delay-interest and partial-payment tracking), delete loans/borrowers, and export a loan's statement as CSV. |
 
-MongoDB sync (optional, off by default until you run the API server) lets
-you pull the full dataset from your Atlas cluster (overwriting local data)
-or push individual borrower/loan/payment changes as they happen — see
-[Data flow](#data-flow) and [MongoDB setup](#mongodb-atlas--api-server-setup) below.
-(Google Sheets sync still exists in the codebase but is no longer wired in
-— see the note in [Legacy: Google Sheets sync](#legacy-google-sheets-sync).)
+Other notable behavior:
+
+- **Offline-first**: every read and write goes through on-device storage
+  first; server sync is best-effort and never blocks or rolls back a local
+  change.
+- **Overdue tracking**: installments are flagged overdue automatically based
+  on due date, with per-client and per-loan status indicators throughout the
+  UI.
+- **Partial payments**: a payment can be recorded for less than the full
+  amount due; the remaining balance and delay interest are tracked per
+  installment.
+- **CSV export & PNG sharing**: a borrower's full loan statement can be
+  shared as CSV; a Simple Interest result can be shared as a PNG image.
+
+## Tech stack
+
+- **App**: Expo (SDK 57), React Native 0.86, React 19, TypeScript, styled
+  with React Native `StyleSheet` (no CSS framework) — runs on iOS, Android,
+  and web via `react-native-web`.
+- **Storage**: `@react-native-async-storage/async-storage` as the local
+  source of truth.
+- **API server**: Node.js + Express + the official `mongodb` driver, talking
+  to a MongoDB Atlas cluster.
 
 ## Project structure
 
@@ -38,6 +55,7 @@ eas.json                      EAS Build profiles
 
 src/
   types.ts                     Borrower / Loan / Payment data model
+  theme/tokens.ts               Shared design tokens (colors, radii, spacing)
 
   screens/                     Full-page views wired into the sidebar switch
     Dashboard.tsx                Portfolio metrics screen
@@ -56,28 +74,20 @@ src/
     Sidebar.tsx                  Slide-in navigation drawer
 
   context/StorageContext.tsx    Borrower/loan state, AsyncStorage + Mongo API sync
-  hooks/useStorage.ts           Deprecated alias for useStorageContext()
+  hooks/useStorage.ts           Alias for useStorageContext()
   hooks/useNotifications.ts     Stub for future payment-reminder notifications
   navigation/screens.ts         Screen list + sidebar labels/icons
 
-  services/mongoSync.ts         HTTP client for the server/ Express API (active)
-  services/sheetsSync.ts        HTTP client for the old Apps Script web app (legacy, unused)
+  services/mongoSync.ts         HTTP client for the server/ Express API
   utils/duePayments.ts          Overdue-installment logic
   utils/portfolioMetrics.ts     Portfolio aggregate metrics
   utils/format.ts               Currency/date formatting helpers
 
-server/                       Express + MongoDB REST API (see MongoDB setup below)
+server/                       Express + MongoDB REST API
   src/index.js                  App entry point, starts the HTTP server
   src/db.js                     MongoDB connection (reads MONGODB_URI from .env)
   src/routes.js                 REST routes mirroring mongoSync.ts's function set
   .env.example                  Template for server/.env (gitignored)
-
-proxy/sheets_proxy.py         Legacy optional Flask CORS relay for Sheets (unused)
-proxy/requirements.txt        Python deps for the proxy (flask, requests)
-testing.js                    Legacy: standalone Node script to test the old Apps Script webapp
-docs/GOOGLE_SHEETS_APPS_SCRIPT.md   Legacy Apps Script contract (kept for reference)
-docs/NOSQL_MIGRATION_PROPOSAL.md    Design record: why MongoDB, and how it's wired in
-docs/ARCHITECTURE.md          Module boundaries and data-flow diagram
 ```
 
 ## Data flow
@@ -86,9 +96,9 @@ docs/ARCHITECTURE.md          Module boundaries and data-flow diagram
 UI components  →  StorageContext (AsyncStorage)  →  mongoSync.ts  →  server/ (Express)  →  MongoDB Atlas
 ```
 
-- **UI components** call `useStorageContext()` (or the deprecated
-  `useStorage()` alias) to read `borrowers` and to call `saveBorrower`,
-  `saveLoan`, `deleteLoan`, `deleteBorrower`, or `refreshFromServer`.
+- **UI components** call `useStorageContext()` to read `borrowers` and to
+  call `saveBorrower`, `saveLoan`, `deleteLoan`, `deleteBorrower`, or
+  `refreshFromServer`.
 - **`src/context/StorageContext.tsx`** is the single source of truth. Every
   mutation is written to `AsyncStorage` (key `borrowers_data`) first; syncing
   to the API server is attempted afterward on a best-effort basis and never
@@ -96,17 +106,11 @@ UI components  →  StorageContext (AsyncStorage)  →  mongoSync.ts  →  serve
   path — it fetches the full dataset and overwrites local state.
 - **`src/services/mongoSync.ts`** is a thin HTTP client (plain REST/JSON,
   one function per operation) for the `server/` Express API.
-- **`server/`** is a small Express app (see [MongoDB setup](#mongodb-atlas--api-server-setup)
-  below) that reads/writes a `borrowers` collection in your MongoDB Atlas
-  cluster via the official `mongodb` driver. Each borrower document embeds
-  its loans, and each loan embeds its payments — the same shape as the
-  app's own `Borrower`/`Loan`/`Payment` types, so no schema translation is
-  needed.
-
-For the full module-by-module breakdown and a diagram, see
-[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md). For why MongoDB was chosen
-over Firestore/Supabase and what was ruled out along the way, see
-[docs/NOSQL_MIGRATION_PROPOSAL.md](./docs/NOSQL_MIGRATION_PROPOSAL.md).
+- **`server/`** is a small Express app that reads/writes a `borrowers`
+  collection in your MongoDB Atlas cluster via the official `mongodb`
+  driver. Each borrower document embeds its loans, and each loan embeds its
+  payments — the same shape as the app's own `Borrower`/`Loan`/`Payment`
+  types, so no schema translation is needed.
 
 ## Setup
 
@@ -128,8 +132,8 @@ with Expo Go. (`npm run android` / `npm run ios` / `npm run web` do the same
 directly.)
 
 Without any further configuration, the app works fully offline: everything
-is persisted to on-device `AsyncStorage` and the Clients/Dashboard/Due
-Payments screens work against local data. MongoDB sync is optional.
+is persisted to on-device `AsyncStorage` and the Dashboard, Due Payments, and
+Clients screens work against local data. MongoDB sync is optional.
 
 ### MongoDB Atlas + API server setup (optional)
 
@@ -166,16 +170,6 @@ The server has no auth in front of it yet — fine for local development or a
 private network, but add an API key or similar before deploying it
 somewhere publicly reachable.
 
-### Legacy: Google Sheets sync
-
-Earlier versions of this app synced to a Google Sheet through a Google Apps
-Script web app instead of MongoDB (see
-[docs/NOSQL_MIGRATION_PROPOSAL.md](./docs/NOSQL_MIGRATION_PROPOSAL.md) for
-why it was replaced). That code — `src/services/sheetsSync.ts`,
-`docs/GOOGLE_SHEETS_APPS_SCRIPT.md`, `proxy/sheets_proxy.py`, `testing.js`
-— is still in the repo for reference but **is no longer called from
-anywhere in the app**; `StorageContext` talks to `mongoSync.ts` exclusively.
-
 ### Build for production (EAS)
 
 ```bash
@@ -191,10 +185,6 @@ There's no automated test suite for the React Native app itself. To sanity
 check the API server directly (useful when setting up or debugging Mongo
 sync), hit its routes with `curl` once it's running, e.g.
 `curl http://localhost:4000/health` and `curl http://localhost:4000/api/data`.
-
-`testing.js` (a standalone Node script exercising the legacy Google Apps
-Script webapp) still works against a deployed Apps Script if you have one,
-but doesn't apply to the current MongoDB backend.
 
 ## Interest formulas
 
@@ -235,11 +225,10 @@ Payment  { id, dueDate, dueNumber, principal, interest, totalAmount,
 
 | Issue | Fix |
 |---|---|
-| Sheets sync not working | Verify `sheetsWebappUrl` in `app.json` is set and redeployed, then restart Expo. Run `node testing.js <url>` to check the webapp responds correctly outside the app. |
-| Refresh returns 0 borrowers but you expect data | Confirm your Apps Script's `read_all_data` handler is returning a `borrowers` array — see `docs/GOOGLE_SHEETS_APPS_SCRIPT.md`. |
-| Refresh fails / "Sheets returned an unexpected response format" | The Apps Script response didn't include a `borrowers` array, or wasn't valid JSON — check the Apps Script logs. |
+| Refresh fails with a network error | Confirm the API server (`server/`) is running and `expo.extra.mongoApiUrl` in `app.json` points at a reachable address — `localhost` only works when the app and server run on the same machine. |
+| Refresh returns 0 borrowers but you expect data | Confirm you're pointed at the right MongoDB database/cluster, and that data was actually written there. |
 | Share/export fails on an emulator | Some emulators lack share targets; test on a physical device. |
-| Date picker behaves differently on iOS vs Android | Expected — Android shows a native inline dialog, iOS opens a bottom-sheet modal with Done/Cancel (`src/components/DatePicker.tsx`). |
+| Date picker behaves differently across platforms | Expected — Android shows a native inline dialog, iOS opens a bottom-sheet modal with Done/Cancel, and web renders a native `<input type="date">` (`src/components/DatePicker.tsx`). |
 
 ## License
 

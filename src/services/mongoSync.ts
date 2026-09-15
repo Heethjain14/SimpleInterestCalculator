@@ -1,8 +1,6 @@
 /**
  * HTTP client for the self-hosted Express + MongoDB API (see server/).
- * Plain REST over JSON - no URL-length chunking needed here, unlike
- * sheetsSync.ts, since requests aren't routed through Google Apps Script's
- * GET-only redirect quirk (see the comment at the top of that file).
+ * Plain REST over JSON, one function per operation.
  */
 
 async function request(base: string, path: string, method: string, body?: any) {
