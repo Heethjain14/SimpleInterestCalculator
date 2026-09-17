@@ -23,6 +23,14 @@
     "sdkVersion": "57.0.0",
     "extra": {
       "mongoApiUrl": "http://localhost:4000",
+      "firebaseConfig": {
+        "apiKey": "AIzaSyBu6dTBYnY9Kpa3Z1wHDDhDyaIXk1Cu-JM",
+        "authDomain": "simple-interest-calculat-8980c.firebaseapp.com",
+        "projectId": "simple-interest-calculat-8980c",
+        "storageBucket": "simple-interest-calculat-8980c.firebasestorage.app",
+        "messagingSenderId": "1071737220752",
+        "appId": "1:1071737220752:web:fb7853d8d297a5ec343215"
+      },
       "eas": {
         "projectId": "bf395f96-301b-4dc6-8bc4-fba4c18197cb"
       }

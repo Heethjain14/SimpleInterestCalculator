@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Borrower, Loan } from '../types';
-import mongoSync from '../services/mongoSync';
+import firebaseSync from '../services/firebaseSync';
 
 const STORAGE_KEY = 'borrowers_data';
 
@@ -20,17 +20,13 @@ interface StorageContextValue {
   deleteBorrower: (borrowerId: string) => Promise<void>;
   getBorrower: (id: string) => Borrower | null;
   reload: () => Promise<void>;
-  /** Pulls the full dataset from the API server and overwrites local + AsyncStorage state. */
+  /** Pulls the full dataset from Firestore and overwrites local + AsyncStorage state. */
   refreshFromServer: () => Promise<RefreshResult>;
 }
 
 const StorageContext = createContext<StorageContextValue | null>(null);
 
-function getApiUrl(): string | undefined {
-  return (globalThis as any).MONGO_API_URL;
-}
-
-/** Shared borrower storage backed by AsyncStorage with optional MongoDB API sync. */
+/** Shared borrower storage backed by AsyncStorage with Firestore sync. */
 export function StorageProvider({ children }: { children: ReactNode }) {
   const [borrowers, setBorrowers] = useState<Borrower[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,40 +45,34 @@ export function StorageProvider({ children }: { children: ReactNode }) {
   useEffect(() => { load(); }, [load]);
 
   const refreshFromServer = useCallback(async (): Promise<RefreshResult> => {
-    const url = getApiUrl();
-    if (!url) {
-      console.error('[Mongo] Refresh aborted: no API URL configured in app.json');
-      return { ok: false, reason: 'no_url' };
-    }
-
     try {
       setLoading(true);
-      const response = await mongoSync.fetchAllData(url);
+      const response = await firebaseSync.fetchAllData();
 
       if (!response) {
-        console.error('[Mongo] No response received from the API server (fetch returned null)');
+        console.error('[Firebase] No response received from Firestore (fetch returned null)');
         return { ok: false, reason: 'network' };
       }
       if (response.ok === false) {
-        console.error('[Mongo] API returned error:', response.message ?? response);
-        return { ok: false, reason: response.reason ?? 'api_error' };
+        console.error('[Firebase] Fetch returned error:', (response as any).message ?? response);
+        return { ok: false, reason: (response as any).reason ?? 'api_error' };
       }
 
-      const nextBorrowers = response.borrowers;
+      const nextBorrowers = (response as any).borrowers;
       if (!Array.isArray(nextBorrowers)) {
-        console.error('[Mongo] Expected borrower array but got:', typeof nextBorrowers, nextBorrowers);
-        console.error('[Mongo] Full raw response:', response);
+        console.error('[Firebase] Expected borrower array but got:', typeof nextBorrowers, nextBorrowers);
+        console.error('[Firebase] Full raw response:', response);
         return { ok: false, reason: 'invalid_response' };
       }
 
       setBorrowers(nextBorrowers);
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(nextBorrowers));
       if (__DEV__) {
-        console.log('[Mongo] Refresh successful, loaded', nextBorrowers.length, 'borrowers');
+        console.log('[Firebase] Refresh successful, loaded', nextBorrowers.length, 'borrowers');
       }
       return { ok: true, count: nextBorrowers.length };
     } catch (e) {
-      console.error('[Mongo] Unexpected error during fetch:', e);
+      console.error('[Firebase] Unexpected error during fetch:', e);
       return { ok: false, reason: 'network' };
     } finally {
       setLoading(false);
@@ -117,11 +107,8 @@ export function StorageProvider({ children }: { children: ReactNode }) {
     await persistLocal(updated);
 
     try {
-      const url = getApiUrl();
-      if (!url) return;
-
       if (existingLoan) {
-        await mongoSync.updateLoanInfo(url, {
+        await firebaseSync.updateLoanInfo(borrower.id, {
           loanId: loan.id,
           principal: loan.principal,
           interestRate: loan.interestRate,
@@ -131,9 +118,9 @@ export function StorageProvider({ children }: { children: ReactNode }) {
           repaymentMode: loan.repaymentMode,
           loanNotes: loan.notes,
         });
-        await mongoSync.writePaymentSchedule(url, loan.id, loan.payments ?? []);
+        await firebaseSync.writePaymentSchedule(borrower.id, loan.id, loan.payments ?? []);
       } else {
-        const result = await mongoSync.addLoan(url, {
+        const result = await firebaseSync.addLoan({
           loanId: loan.id,
           borrowerId: borrower.id,
           borrowerName: borrower.name,
@@ -193,15 +180,12 @@ export function StorageProvider({ children }: { children: ReactNode }) {
     await persistLocal(updated);
 
     try {
-      const url = getApiUrl();
-      if (url) {
-        await mongoSync.updateBorrowerInfo(url, {
-          borrowerId: borrower.id,
-          name: borrower.name,
-          phone: borrower.phone,
-          notes: borrower.notes,
-        });
-      }
+      await firebaseSync.updateBorrowerInfo({
+        borrowerId: borrower.id,
+        name: borrower.name,
+        phone: borrower.phone,
+        notes: borrower.notes,
+      });
     } catch (e) {
       console.warn('API sync failed (will retry later)', e);
     }
@@ -214,9 +198,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
   /** Internal: create the server-side document for one loan belonging to a borrower that doesn't exist there yet. */
   const saveLoanForNewBorrower = async (borrower: Borrower, loan: Loan) => {
     try {
-      const url = getApiUrl();
-      if (!url) return;
-      const result = await mongoSync.addLoan(url, {
+      const result = await firebaseSync.addLoan({
         loanId: loan.id,
         borrowerId: borrower.id,
         borrowerName: borrower.name,
@@ -258,8 +240,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
     await persistLocal(updated);
 
     try {
-      const url = getApiUrl();
-      if (url) await mongoSync.deleteLoan(url, loanId);
+      await firebaseSync.deleteLoan(borrowerId, loanId);
     } catch (e) {
       console.warn('API delete failed (will retry later)', e);
     }
@@ -270,8 +251,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
     await persistLocal(updated);
 
     try {
-      const url = getApiUrl();
-      if (url) await mongoSync.deleteBorrower(url, borrowerId);
+      await firebaseSync.deleteBorrower(borrowerId);
     } catch (e) {
       console.warn('API delete failed (will retry later)', e);
     }
