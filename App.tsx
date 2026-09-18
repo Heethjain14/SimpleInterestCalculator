@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
-  StyleSheet, Text, View, TouchableOpacity, SafeAreaView,
+  StyleSheet, Text, View, TouchableOpacity,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { StorageProvider } from './src/context/StorageContext';
 import Sidebar from './src/components/Sidebar';
@@ -89,9 +90,11 @@ function AppShell() {
 /** Root app with sliding sidebar navigation and shared storage context. */
 export default function App() {
   return (
-    <StorageProvider>
-      <AppShell />
-    </StorageProvider>
+    <SafeAreaProvider>
+      <StorageProvider>
+        <AppShell />
+      </StorageProvider>
+    </SafeAreaProvider>
   );
 }
 

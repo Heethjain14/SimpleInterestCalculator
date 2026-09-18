@@ -3,9 +3,10 @@ import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, Alert, Modal,
 } from 'react-native';
-import { Loan, Payment, PaymentMode } from '../types';
+import { Loan, Payment, PaymentMode, PartialPayment } from '../types';
 import DatePicker from './DatePicker';
 import { getAmountDue } from '../utils/duePayments';
+import { generateId } from '../utils/id';
 import { colors, radii } from '../theme/tokens';
 
 interface Props {
@@ -23,6 +24,25 @@ function formatCurrency(n: number): string {
 
 const PAYMENT_MODES: PaymentMode[] = ['Cash', 'UPI', 'Bank Transfer', 'Cheque','RTGS'];
 
+/** Recomputes a payment's paidAmount/remainingAmount/paidDate/delay roll-ups from its partialPayments history. */
+function recomputeRollups(payment: Payment, partialPayments: PartialPayment[]): Payment {
+  const paidAmount = partialPayments.reduce((sum, p) => sum + p.amount, 0);
+  const remainingAmount = Math.max(0, payment.totalAmount - paidAmount);
+  const last = partialPayments[partialPayments.length - 1];
+  const distinctModes = new Set(partialPayments.map(p => p.mode));
+
+  return {
+    ...payment,
+    partialPayments,
+    paidAmount,
+    remainingAmount,
+    paidDate: last?.date,
+    delayDays: last?.delayDays ?? 0,
+    delayInterest: partialPayments.reduce((sum, p) => sum + p.delayInterest, 0),
+    paymentMode: distinctModes.size > 1 ? 'Mixed' : last?.mode,
+  };
+}
+
 /** Bottom-sheet modal to record an installment payment, including delay interest. */
 export default function PaymentRecorder({ loan, visible, paymentId, onSave, onCancel }: Props) {
   const targetPayment = loan.payments
@@ -33,6 +53,7 @@ export default function PaymentRecorder({ loan, visible, paymentId, onSave, onCa
   const [paidDate, setPaidDate] = useState<Date | null>(new Date());
   const [paidAmount, setPaidAmount] = useState('');
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('Cash');
+  const [chunkNotes, setChunkNotes] = useState('');
 
   const handleQuickAmount = (percentage: number) => {
     if (!targetPayment) return;
@@ -70,7 +91,7 @@ export default function PaymentRecorder({ loan, visible, paymentId, onSave, onCa
     const delayDays = Math.max(0, Math.ceil(delayMs / (1000 * 60 * 60 * 24)));
 
     const dailyRate = (loan.interestRate / 100) / 30;
-    const delayInterest = dueTotal * dailyRate * delayDays;
+    const delayInterest = amt * dailyRate * delayDays;
     const remainingAmount = Math.max(0, dueTotal - amt);
 
     if (amt < dueTotal) {
@@ -80,19 +101,22 @@ export default function PaymentRecorder({ loan, visible, paymentId, onSave, onCa
       );
     }
 
-    const updatedPayment: Payment = {
-      ...targetPayment,
-      paidDate: paidDate.toISOString(),
-      paidAmount: (targetPayment.paidAmount ?? 0) + amt,
-      remainingAmount,
+    const chunk: PartialPayment = {
+      id: generateId(),
+      date: paidDate.toISOString(),
+      amount: amt,
+      mode: paymentMode,
       delayDays,
       delayInterest,
-      paymentMode,
+      notes: chunkNotes.trim() || undefined,
     };
+
+    const updatedPayment = recomputeRollups(targetPayment, [...targetPayment.partialPayments, chunk]);
 
     onSave(updatedPayment);
     setPaidDate(new Date());
     setPaidAmount('');
+    setChunkNotes('');
   };
 
   return (
@@ -118,6 +142,20 @@ export default function PaymentRecorder({ loan, visible, paymentId, onSave, onCa
                   <Text style={styles.metaText}>Installment #{targetPayment.dueNumber}</Text>
                 </View>
               </View>
+
+              {targetPayment.partialPayments.length > 0 && (
+                <View style={styles.historyCard}>
+                  <Text style={styles.sectionLabel}>Already recorded</Text>
+                  {targetPayment.partialPayments.map(chunk => (
+                    <View key={chunk.id} style={styles.historyRow}>
+                      <Text style={styles.historyText}>
+                        {new Date(chunk.date).toLocaleDateString()} · {chunk.mode}
+                      </Text>
+                      <Text style={styles.historyAmount}>₹{formatCurrency(chunk.amount)}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
 
               <Text style={styles.sectionLabel}>Quick amount</Text>
               <View style={styles.quickRow}>
@@ -164,6 +202,17 @@ export default function PaymentRecorder({ loan, visible, paymentId, onSave, onCa
                   placeholder="Enter payment amount"
                   placeholderTextColor="#aaa"
                   keyboardType="decimal-pad"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.sectionLabel}>Notes (optional)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={chunkNotes}
+                  onChangeText={setChunkNotes}
+                  placeholder="e.g. cheque number, reason for split"
+                  placeholderTextColor="#aaa"
                 />
               </View>
 
@@ -278,6 +327,29 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.ink2,
     marginBottom: 8,
+  },
+  historyCard: {
+    backgroundColor: colors.surface2,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    marginBottom: 16,
+  },
+  historyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  historyText: {
+    fontSize: 12.5,
+    color: colors.ink2,
+    fontWeight: '600',
+  },
+  historyAmount: {
+    fontSize: 12.5,
+    color: colors.ink,
+    fontWeight: '700',
   },
   quickRow: {
     flexDirection: 'row',

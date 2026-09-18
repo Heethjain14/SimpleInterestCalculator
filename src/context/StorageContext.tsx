@@ -26,6 +26,43 @@ interface StorageContextValue {
 
 const StorageContext = createContext<StorageContextValue | null>(null);
 
+/**
+ * Defends against stale on-device AsyncStorage data written by an older
+ * version of the app (e.g. before `loans`/`payments` were always present, or
+ * before `partialPayments`/`disbursedAmount` existed) — every current write
+ * path always sets them, so this only matters for data that predates the
+ * current shape.
+ */
+function sanitizeBorrowers(borrowers: Borrower[]): Borrower[] {
+  return (borrowers ?? []).map(b => ({
+    ...b,
+    name: b.name ?? '',
+    phone: b.phone ?? '',
+    createdAt: b.createdAt ?? new Date().toISOString(),
+    loans: (b.loans ?? []).map(l => ({
+      ...l,
+      disbursedAmount: l.disbursedAmount ?? l.principal,
+      payments: (l.payments ?? []).map(p => ({
+        ...p,
+        // Old single-payment shape: synthesize one history entry so the
+        // existing paid/remaining amounts survive the upgrade.
+        partialPayments: p.partialPayments ?? (
+          p.paidAmount
+            ? [{
+                id: `${p.id}-legacy`,
+                date: p.paidDate ?? p.dueDate,
+                amount: p.paidAmount,
+                mode: p.paymentMode ?? 'Cash',
+                delayDays: p.delayDays ?? 0,
+                delayInterest: p.delayInterest ?? 0,
+              }]
+            : []
+        ),
+      })),
+    })),
+  }));
+}
+
 /** Shared borrower storage backed by AsyncStorage with Firestore sync. */
 export function StorageProvider({ children }: { children: ReactNode }) {
   const [borrowers, setBorrowers] = useState<Borrower[]>([]);
@@ -34,7 +71,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
   const load = useCallback(async () => {
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
-      if (raw) setBorrowers(JSON.parse(raw));
+      if (raw) setBorrowers(sanitizeBorrowers(JSON.parse(raw)));
     } catch (e) {
       console.error('Failed to load borrowers', e);
     } finally {
@@ -133,6 +170,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
           tenure: loan.tenure,
           nextDueDate: loan.nextDueDate,
           repaymentMode: loan.repaymentMode,
+          disbursedAmount: loan.disbursedAmount,
           loanNotes: loan.notes,
           payments: loan.payments ?? [],
         });
@@ -211,6 +249,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
         tenure: loan.tenure,
         nextDueDate: loan.nextDueDate,
         repaymentMode: loan.repaymentMode,
+        disbursedAmount: loan.disbursedAmount,
         loanNotes: loan.notes,
         payments: loan.payments ?? [],
       });

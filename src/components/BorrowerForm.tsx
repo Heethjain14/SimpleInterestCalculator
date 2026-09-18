@@ -6,6 +6,7 @@
   import { Borrower, Loan, Payment } from '../types';
   import { useNotifications } from '../hooks/useNotifications';
   import DatePicker from './DatePicker';
+  import { generateId } from '../utils/id';
   import { colors, radii } from '../theme/tokens';
 
   interface Props {
@@ -21,8 +22,9 @@
     return d;
   }
 
-  function generateId(): string {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2);
+  interface GeneratedSchedule {
+    payments: Payment[];
+    disbursedAmount: number;
   }
 
   /** Builds the full installment schedule for a new loan in Cutting or Adding EMI mode. */
@@ -32,21 +34,21 @@
   tenure: number,
   startDate: Date,
   repaymentMode: 'cutting' | 'adding' = 'cutting',
-): Payment[] {
+): GeneratedSchedule {
   const payments: Payment[] = [];
- 
+
   if (repaymentMode === 'cutting') {
     // Interest is deducted upfront and handed to the borrower as a discount,
     // but the borrower still owes the FULL principal back over the tenure.
     const totalDue = principal;
     const totalInterest = totalDue * (rate / 100) * tenure;
-    const amountGiven = totalDue - totalInterest; // what's actually disbursed (informational)
- 
-    // FIX: repayment installments must total the full principal (totalDue),
-    // not the discounted disbursed amount (amountGiven).
+    const disbursedAmount = totalDue - totalInterest; // what's actually handed to the borrower
+
+    // Repayment installments total the full principal (totalDue), not the
+    // discounted disbursed amount.
     const monthlyRepayment = totalDue / tenure;
     const monthlyInterest = totalInterest / tenure; // informational only, already collected upfront
- 
+
     for (let i = 1; i <= tenure; i++) {
       const dueDate = addMonths(startDate, i);
       payments.push({
@@ -56,41 +58,43 @@
         principal: monthlyRepayment,
         interest: monthlyInterest,
         totalAmount: monthlyRepayment,
+        partialPayments: [],
         remainingAmount: monthlyRepayment,
         delayDays: 0,
         delayInterest: 0,
       });
     }
- 
-    return payments;
+
+    return { payments, disbursedAmount };
   }
- 
-  // 'adding' mode: repayment is set on principal + interest combined.
+
+  // 'adding' mode: repayment is set on principal + interest combined; nothing withheld upfront.
   const totalInterest = principal * (rate / 100) * tenure;
   const monthlyRepayment = principal / tenure;
   const monthlyInterest = totalInterest / tenure;
- 
+
   for (let i = 1; i <= tenure; i++) {
     const dueDate = addMonths(startDate, i);
     const repaymentAmount = monthlyRepayment + monthlyInterest;
- 
+
     payments.push({
       id: generateId(),
       dueDate: dueDate.toISOString(),
       dueNumber: i,
-      // FIX: `principal` should hold only the principal portion of this
-      // installment (to stay consistent with the 'cutting' branch above),
-      // not the combined principal+interest amount.
+      // `principal` holds only the principal portion of this installment (to
+      // stay consistent with the 'cutting' branch above), not the combined
+      // principal+interest amount.
       principal: monthlyRepayment,
       interest: monthlyInterest,
       totalAmount: repaymentAmount,
+      partialPayments: [],
       remainingAmount: repaymentAmount,
       delayDays: 0,
       delayInterest: 0,
     });
   }
- 
-  return payments;
+
+  return { payments, disbursedAmount: principal };
 }
   /** Form to create/edit a borrower; optionally attaches a new loan with auto-generated payments. */
   export default function BorrowerForm({ initial, allowLoanFields = false, onSave, onCancel }: Props) {
@@ -128,7 +132,7 @@
         }
 
         const nextDueDate = addMonths(loanStartDate, 1);
-        const payments = generatePaymentSchedule(p, r, t, loanStartDate, loanRepaymentMode);
+        const { payments, disbursedAmount } = generatePaymentSchedule(p, r, t, loanStartDate, loanRepaymentMode);
         newLoan = {
           id: generateId(),
           principal: p,
@@ -137,6 +141,7 @@
           tenure: t,
           nextDueDate: nextDueDate.toISOString(),
           repaymentMode: loanRepaymentMode,
+          disbursedAmount,
           notes: loanNotes,
           payments,
         };

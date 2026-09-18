@@ -7,7 +7,7 @@ import {
   Animated,
   Pressable,
 } from 'react-native';
-import { SafeAreaView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { NAV_ITEMS, Screen } from '../navigation/screens';
 import { colors, radii } from '../theme/tokens';

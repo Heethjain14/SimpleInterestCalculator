@@ -77,6 +77,7 @@ export default function BorrowerDetail({ borrower, onBack, onEdit, onSave }: Pro
         ['Borrower', current.name],
         ['Phone', current.phone],
         ['Loan Principal', String(loan.principal)],
+        ['Disbursed Amount', String(loan.disbursedAmount)],
         ['Interest Rate %', String(loan.interestRate)],
         ['Tenure Months', String(loan.tenure)],
         ['EMI Mode', loan.repaymentMode === 'adding' ? 'Adding' : 'Cutting'],
@@ -247,7 +248,12 @@ export default function BorrowerDetail({ borrower, onBack, onEdit, onSave }: Pro
                 onPress={() => setExpandedLoan(isExpanded ? null : loan.id)}
               >
                 <View style={styles.loanHeaderLeft}>
-                  <Text style={styles.loanPrincipal}>₹{formatCurrency(loan.principal)}</Text>
+                  <Text style={styles.loanPrincipal}>
+                    ₹{formatCurrency(loan.principal)}
+                    {loan.disbursedAmount !== loan.principal && (
+                      <Text style={styles.loanDisbursed}> · Disbursed ₹{formatCurrency(loan.disbursedAmount)}</Text>
+                    )}
+                  </Text>
                   <Text style={styles.loanMeta}>
                     {loan.interestRate}% · {loan.tenure} months · {loan.repaymentMode === 'adding' ? 'Adding' : 'Cutting'} EMI · from {formatDate(loan.startDate)}
                   </Text>
@@ -264,13 +270,21 @@ export default function BorrowerDetail({ borrower, onBack, onEdit, onSave }: Pro
               {isExpanded && (
                 <View style={styles.scheduleContainer}>
                   <Text style={styles.subsectionLabel}>INSTALLMENT SCHEDULE</Text>
+                  {loan.repaymentMode !== 'adding' && (
+                    <Text style={styles.cuttingCaption}>
+                      Interest (₹{formatCurrency(totalLoanInterest)} total) was collected upfront at
+                      disbursal — installments below repay principal only.
+                    </Text>
+                  )}
                   <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={styles.tableScroll}>
                     <View style={styles.tableBlock}>
                       <View style={styles.tableHeader}>
                         <Text style={[styles.th, styles.colNo]}>Due No</Text>
                         <Text style={[styles.th, styles.colDate]}>Due Date</Text>
                         <Text style={[styles.th, styles.colAmt]}>Principal</Text>
-                        <Text style={[styles.th, styles.colAmt]}>Interest</Text>
+                        <Text style={[styles.th, styles.colAmt]}>
+                          {loan.repaymentMode === 'adding' ? 'Interest' : 'Interest (upfront)'}
+                        </Text>
                         <Text style={[styles.th, styles.colAmt]}>Total</Text>
                       </View>
 
@@ -289,27 +303,34 @@ export default function BorrowerDetail({ borrower, onBack, onEdit, onSave }: Pro
                   <Text style={styles.subsectionLabel}>PAYMENT TRACKING</Text>
                   <View style={styles.paymentList}>
                     {payments.map((p) => {
-                      const paid = !!p.paidAmount;
-                      const overdue = !paid && isPaymentOverdue(p);
+                      const fullyPaid = !!p.paidAmount && (p.remainingAmount ?? 0) <= 0;
+                      const partiallyPaid = !fullyPaid && !!p.paidAmount;
+                      const overdue = !fullyPaid && isPaymentOverdue(p);
                       const overdueDays = overdue ? daysOverdue(p.dueDate) : 0;
+                      const dotColor = fullyPaid ? colors.success : partiallyPaid ? colors.warning : overdue ? colors.danger : colors.ink3;
+                      const chipStyle = fullyPaid ? styles.chipSuccess : partiallyPaid ? styles.chipWarning : overdue ? styles.chipDanger : styles.chipNeutral;
+                      const chipColor = fullyPaid ? colors.success : partiallyPaid ? colors.warning : overdue ? colors.danger : colors.ink2;
                       return (
                         <View key={p.id} style={[styles.paymentTrackRow, overdue && styles.paymentTrackRowUnpaid]}>
-                          <View style={[styles.trackDot, { backgroundColor: paid ? colors.success : overdue ? colors.danger : colors.ink3 }]} />
+                          <View style={[styles.trackDot, { backgroundColor: dotColor }]} />
                           <View style={styles.rowMain}>
                             <Text style={styles.paymentTrackTitle}>
-                              Due #{p.dueNumber} · {paid ? `Paid ${formatDate(p.paidDate!)}` : 'Unpaid'}
+                              Due #{p.dueNumber} · {fullyPaid ? `Paid ${formatDate(p.paidDate!)}` : partiallyPaid ? 'Partially paid' : 'Unpaid'}
                             </Text>
                             <Text style={styles.paymentTrackSub}>
-                              {paid
+                              {fullyPaid
                                 ? (p.paymentMode ?? '')
-                                : overdue
-                                  ? `${overdueDays} day${overdueDays !== 1 ? 's' : ''} overdue`
-                                  : `Due ${formatDate(p.dueDate)}`}
+                                : partiallyPaid
+                                  ? `₹${formatCurrency(p.paidAmount!)} of ₹${formatCurrency(p.totalAmount)} paid`
+                                  : overdue
+                                    ? `${overdueDays} day${overdueDays !== 1 ? 's' : ''} overdue`
+                                    : `Due ${formatDate(p.dueDate)}`}
+                              {p.partialPayments.length > 1 && ` · ${p.partialPayments.length} payments`}
                             </Text>
                           </View>
-                          <View style={[styles.chip, paid ? styles.chipSuccess : overdue ? styles.chipDanger : styles.chipNeutral]}>
-                            <Text style={[styles.chipText, { color: paid ? colors.success : overdue ? colors.danger : colors.ink2 }]}>
-                              ₹{formatCurrency(paid ? p.paidAmount! : p.totalAmount)}
+                          <View style={[styles.chip, chipStyle]}>
+                            <Text style={[styles.chipText, { color: chipColor }]}>
+                              ₹{formatCurrency(fullyPaid ? p.paidAmount! : partiallyPaid ? p.remainingAmount! : p.totalAmount)}
                             </Text>
                           </View>
                         </View>
@@ -420,6 +441,7 @@ const styles = StyleSheet.create({
   },
   loanHeaderLeft: { flex: 1 },
   loanPrincipal: { fontSize: 17, fontWeight: '800', color: colors.ink },
+  loanDisbursed: { fontSize: 13, fontWeight: '600', color: colors.ink2 },
   loanMeta: { fontSize: 12.5, color: colors.ink2, marginTop: 3 },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
   progressTrack: { flex: 1, height: 5, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' },
@@ -431,6 +453,10 @@ const styles = StyleSheet.create({
   subsectionLabel: {
     fontSize: 10.5, fontWeight: '700', color: colors.ink2, letterSpacing: 0.6,
     paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8,
+  },
+  cuttingCaption: {
+    fontSize: 11.5, color: colors.ink2, fontStyle: 'italic',
+    paddingHorizontal: 14, paddingBottom: 8,
   },
   tableScroll: { paddingBottom: 8 },
   tableBlock: { minWidth: 520 },
@@ -462,6 +488,7 @@ const styles = StyleSheet.create({
   paymentTrackSub: { fontSize: 11, color: colors.ink2, marginTop: 2 },
   chip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: radii.pill },
   chipSuccess: { backgroundColor: colors.successSoft },
+  chipWarning: { backgroundColor: colors.warningSoft },
   chipDanger: { backgroundColor: colors.dangerSoft },
   chipNeutral: { backgroundColor: colors.surface2 },
   chipText: { fontSize: 11, fontWeight: '700' },

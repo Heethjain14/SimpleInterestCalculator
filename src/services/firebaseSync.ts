@@ -84,7 +84,20 @@ function loanData(loan: any) {
     tenure: loan.tenure ?? null,
     nextDueDate: loan.nextDueDate ?? null,
     repaymentMode: loan.repaymentMode ?? null,
+    disbursedAmount: loan.disbursedAmount ?? loan.principal,
     notes: loan.loanNotes ?? null,
+  };
+}
+
+function partialPaymentData(pp: any) {
+  return {
+    id: pp.id,
+    date: pp.date,
+    amount: pp.amount,
+    mode: pp.mode,
+    delayDays: pp.delayDays,
+    delayInterest: pp.delayInterest,
+    notes: pp.notes ?? null,
   };
 }
 
@@ -95,6 +108,7 @@ function paymentData(p: any) {
     principal: p.principal,
     interest: p.interest,
     totalAmount: p.totalAmount,
+    partialPayments: (p.partialPayments ?? []).map(partialPaymentData),
     paidDate: p.paidDate ?? null,
     paidAmount: p.paidAmount ?? null,
     remainingAmount: p.remainingAmount ?? null,
@@ -121,6 +135,7 @@ function toLoan(d: QueryDocumentSnapshot): Omit<Loan, 'payments'> & { _borrowerI
     tenure: data.tenure,
     nextDueDate: data.nextDueDate,
     repaymentMode: data.repaymentMode,
+    disbursedAmount: data.disbursedAmount ?? data.principal,
     notes: data.notes,
     _borrowerId: d.ref.parent.parent!.id,
   };
@@ -136,6 +151,7 @@ function toPayment(d: QueryDocumentSnapshot): Payment & { _loanId: string } {
     principal: data.principal,
     interest: data.interest,
     totalAmount: data.totalAmount,
+    partialPayments: data.partialPayments ?? [],
     paidDate: data.paidDate ?? undefined,
     paidAmount: data.paidAmount ?? undefined,
     remainingAmount: data.remainingAmount ?? undefined,
