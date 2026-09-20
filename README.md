@@ -18,7 +18,7 @@ Five screens, reachable from the sidebar drawer (tap ☰):
 | **Dashboard** | Portfolio overview — total exposure, weighted average interest rate, outstanding vs. collected amounts, collection rate, overdue amount/count, active loan/borrower counts, and a due-soon preview. |
 | **Due Payments** | Every overdue, not-fully-settled installment across all borrowers, sorted most-overdue first, with one-tap payment recording and a jump to the borrower's profile. |
 | **Simple Interest** | Calculates simple interest over a date range and renders a shareable result card you can export as a PNG. |
-| **EMI Schedule** | Generates a monthly installment schedule in **Cutting** mode (interest deducted upfront, full principal repaid) or **Adding** mode (interest added on top of principal, split evenly). |
+| **EMI Statement** | Takes a client name, date, tenure and one or more particulars (name, amount, monthly interest rate, PAN) and exports an Excel `STATEMENT` sheet in **Cutting** mode: interest for the whole tenure is deducted upfront, giving each particular's RTGS amount, monthly EMI and monthly due-date range. Names can be saved and picked from a dropdown; saved names sync to Firestore (`users/{uid}/savedParticulars`), while **PANs are never sent to Firestore in plaintext or written to AsyncStorage** — on phones they live only in the device's secure store (Keychain/Keystore); on web they are encrypted in the browser with a separate vault passphrase and only the ciphertext is synced (`src/services/pan/`). |
 | **Clients** | Full borrower/loan management — create/edit borrowers, attach loans with an auto-generated payment schedule, record payments (with automatic delay-interest and partial-payment tracking), delete loans/borrowers, and export a loan's statement as CSV. |
 
 Other notable behavior:
@@ -67,7 +67,7 @@ src/
     Dashboard.tsx                Portfolio metrics screen
     DuePaymentsList.tsx          Overdue installments screen
     SimpleInterestCalculator.tsx Simple interest calculator + share card
-    EmiCalculator.tsx            EMI schedule generator
+    EmiCalculator.tsx            EMI statement form + Excel export
     BorrowerList.tsx             Client list, search, add/select
     BorrowerDetail.tsx           Borrower profile: loans, payments, CSV export
     LoginScreen.tsx              Email/password sign-in and sign-up
@@ -79,10 +79,15 @@ src/
     ShareResultCard.tsx          Shareable PNG card for Simple Interest results
     RefreshButton.tsx            Triggers a pull from Firestore
     Sidebar.tsx                  Slide-in navigation drawer
+    SavedParticularPicker.tsx    Searchable saved-names dropdown for the EMI statement
 
   context/AuthContext.tsx       Firebase email/password auth state
   context/StorageContext.tsx    Borrower/loan state, AsyncStorage + Firestore sync
   hooks/useStorage.ts           Alias for useStorageContext()
+  hooks/useSavedParticulars.ts  Saved names (synced to Firestore) + PANs (device-only)
+  services/panVault.ts          Device-only PAN storage on native (expo-secure-store)
+  services/panVault.web.ts      Web PAN vault (client-side encrypted, ciphertext in Firestore)
+  services/pan/                 Vault crypto (scrypt + XChaCha20-Poly1305) and Firestore store
   hooks/useNotifications.ts     Stub for future payment-reminder notifications
   navigation/screens.ts         Screen list + sidebar labels/icons
 
@@ -170,8 +175,10 @@ interest = (principal × ratePercent × days) / 3000
 Uses a 30-day month convention (3000 = 100 × 30); `days` is the inclusive
 day count between start and end date.
 
-**EMI — Cutting mode:** interest for the full tenure is deducted upfront;
-the borrower repays the full principal in equal monthly installments.
+**EMI statement (cutting mode):** per particular, `interest = amount × rate% × months`,
+`RTGS = amount − interest`, `EMI = amount ÷ months`. Due dates are monthly, from
+the date + 1 month to the date + tenure. Written by `src/utils/statementXlsx.ts`
+(interest/RTGS/EMI/totals are live Excel formulas).
 
 **EMI — Adding mode:** interest is added on top of principal; each
 installment is `(principal / tenure) + (totalInterest / tenure)`.

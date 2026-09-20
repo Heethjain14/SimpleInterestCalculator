@@ -91,6 +91,11 @@ export function createVault(store: VaultStore, kdf: KdfParams = DEFAULT_KDF) {
       await store.setEntry(id, seal(requireKey(), id, value));
     },
 
+    /** Whether a PAN is stored for this id. Needs no key: only ciphertext existence is checked. */
+    async has(id: string): Promise<boolean> {
+      return (await store.getEntry(id)) !== null;
+    },
+
     async remove(id: string): Promise<void> {
       await store.deleteEntry(id);
     },

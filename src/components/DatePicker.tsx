@@ -6,14 +6,19 @@ import {
   StyleSheet,
   Platform,
   Modal,
+  StyleProp,
+  ViewStyle,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { colors, radii } from '../theme/tokens';
 
 interface DatePickerProps {
   label: string;
   value: Date | null;
   onChange: (date: Date) => void;
   placeholder: string;
+  /** Overrides the default outer spacing (e.g. to match a form that uses `gap`). */
+  containerStyle?: StyleProp<ViewStyle>;
 }
 
 function formatDate(date: Date): string {
@@ -33,7 +38,7 @@ function toInputDateString(date: Date): string {
 }
 
 /** Cross-platform date picker: Android shows native dialog; iOS uses a bottom modal with Done/Cancel. */
-export default function DatePicker({ label, value, onChange, placeholder }: DatePickerProps) {
+export default function DatePicker({ label, value, onChange, placeholder, containerStyle }: DatePickerProps) {
   const [show, setShow] = useState(false);
   const [tempDate, setTempDate] = useState<Date>(value ?? new Date());
 
@@ -67,7 +72,7 @@ export default function DatePicker({ label, value, onChange, placeholder }: Date
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, containerStyle]}>
       <Text style={styles.label}>{label}</Text>
 
       {Platform.OS === 'web' ? (
@@ -128,15 +133,15 @@ export default function DatePicker({ label, value, onChange, placeholder }: Date
 
 // Plain CSS (not a RN ViewStyle) for the raw DOM <input> rendered on web.
 const webInputStyle: Record<string, string | number> = {
-  border: '1px solid #ddd',
-  borderRadius: 8,
+  border: `1px solid ${colors.border}`,
+  borderRadius: radii.md,
   padding: 12,
-  fontSize: 16,
-  color: '#333',
-  backgroundColor: '#fafafa',
+  fontSize: 14.5,
+  color: colors.ink,
+  backgroundColor: colors.surface,
   width: '100%',
   boxSizing: 'border-box',
-  fontFamily: 'inherit',
+  fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
 };
 
 const styles = StyleSheet.create({
@@ -144,27 +149,27 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: colors.ink2,
+    marginBottom: 7,
   },
   button: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
+    borderColor: colors.border,
+    borderRadius: radii.md,
     padding: 12,
-    backgroundColor: '#fafafa',
+    backgroundColor: colors.surface,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   buttonText: {
-    fontSize: 16,
-    color: '#333',
+    fontSize: 14.5,
+    color: colors.ink,
   },
   placeholder: {
-    color: '#aaa',
+    color: colors.ink3,
   },
   icon: {
     fontSize: 16,

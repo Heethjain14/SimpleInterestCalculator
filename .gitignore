@@ -41,9 +41,6 @@ yarn-error.*
 /ios
 /android
 
-# Claude Code agent worktrees
-.claude/
-
 # Impeccable design-skill cache
 .impeccable/
 

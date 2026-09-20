@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "SimpleInterestCalculator",
+    "name": "Portfolio Ledger",
     "slug": "SimpleInterestCalculator",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -50,7 +50,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

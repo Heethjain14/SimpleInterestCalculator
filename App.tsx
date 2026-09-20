@@ -15,6 +15,9 @@ import EmiCalculator from './src/screens/EmiCalculator';
 import BorrowerList from './src/screens/BorrowerList';
 import { Screen, SCREEN_SUBTITLES, NAV_ITEMS } from './src/navigation/screens';
 import { colors, radii } from './src/theme/tokens';
+import { installWebAlert } from './src/utils/webAlert';
+
+installWebAlert();
 
 // Re-export for ShareResultCard backward compatibility
 export type { CalculationResult } from './src/screens/SimpleInterestCalculator';

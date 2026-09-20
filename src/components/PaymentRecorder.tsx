@@ -1,18 +1,19 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, Alert, Modal,
+  StyleSheet, Alert, Modal, ScrollView, KeyboardAvoidingView,
 } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Loan, Payment, PaymentMode, PartialPayment } from '../types';
 import DatePicker from './DatePicker';
-import { getAmountDue, calendarDaysBetween } from '../utils/duePayments';
+import { getAmountDue, isPaymentOverdue, calendarDaysBetween } from '../utils/duePayments';
 import { generateId } from '../utils/id';
 import { colors, radii } from '../theme/tokens';
 
 interface Props {
   loan: Loan;
   visible: boolean;
-  /** When set, records this specific installment instead of the next unpaid one. */
+  /** Installment selected when the sheet opens; the user can still switch. Defaults to the first unpaid one. */
   paymentId?: string;
   onSave: (payment: Payment) => void;
   onCancel: () => void;
@@ -44,16 +45,48 @@ function recomputeRollups(payment: Payment, partialPayments: PartialPayment[]): 
 }
 
 /** Bottom-sheet modal to record an installment payment, including delay interest. */
-export default function PaymentRecorder({ loan, visible, paymentId, onSave, onCancel }: Props) {
-  const targetPayment = loan.payments
-    ? (paymentId
-      ? loan.payments.find(p => p.id === paymentId)
-      : loan.payments.find(p => getAmountDue(p) > 0))
-    : null;
+export default function PaymentRecorder(props: Props) {
+  return (
+    <Modal
+      visible={props.visible}
+      transparent
+      animationType="slide"
+      onRequestClose={props.onCancel}
+      statusBarTranslucent
+      navigationBarTranslucent
+    >
+      {/* A Modal is its own native window, so it needs its own provider for correct insets. */}
+      <SafeAreaProvider>
+        <Sheet {...props} />
+      </SafeAreaProvider>
+    </Modal>
+  );
+}
+
+function Sheet({ loan, paymentId, onSave, onCancel }: Props) {
+  const insets = useSafeAreaInsets();
+
+  // Every installment that still has money owed, so a payment can go to any of them
+  // (e.g. finish installment 1 after installment 2 has already been cleared).
+  const openInstallments = useMemo(
+    () => (loan.payments ?? []).filter(p => getAmountDue(p) > 0).sort((a, b) => a.dueNumber - b.dueNumber),
+    [loan.payments],
+  );
+  const [selectedId, setSelectedId] = useState<string | undefined>(paymentId);
+  const targetPayment: Payment | undefined =
+    openInstallments.find(p => p.id === selectedId)
+    ?? openInstallments.find(p => p.id === paymentId)
+    ?? openInstallments[0];
+
   const [paidDate, setPaidDate] = useState<Date | null>(new Date());
   const [paidAmount, setPaidAmount] = useState('');
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('Cash');
   const [chunkNotes, setChunkNotes] = useState('');
+
+  const handleSelectInstallment = (id: string) => {
+    setSelectedId(id);
+    setPaidAmount(''); // a typed / quick amount was worked out for the previous installment
+  };
 
   const handleQuickAmount = (percentage: number) => {
     if (!targetPayment) return;
@@ -119,26 +152,67 @@ export default function PaymentRecorder({ loan, visible, paymentId, onSave, onCa
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+    <KeyboardAvoidingView style={styles.overlay} behavior="padding">
+      <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
+        <View style={styles.handle} />
 
-          {targetPayment ? (
-            <>
-              <View style={styles.headerRow}>
-                <Text style={styles.title}>Record payment</Text>
-                <TouchableOpacity onPress={onCancel} style={styles.closeBtn}>
-                  <Text style={styles.closeText}>✕</Text>
-                </TouchableOpacity>
-              </View>
+        {targetPayment ? (
+          <>
+            <View style={styles.headerRow}>
+              <Text style={styles.title}>Record payment</Text>
+              <TouchableOpacity onPress={onCancel} style={styles.closeBtn}>
+                <Text style={styles.closeText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.body}
+              contentContainerStyle={styles.bodyContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {openInstallments.length > 1 && (
+                <View style={styles.block}>
+                  <Text style={styles.sectionLabel}>Apply to installment</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.installmentRow}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {openInstallments.map(p => {
+                      const selected = p.id === targetPayment.id;
+                      const overdue = isPaymentOverdue(p);
+                      const due = new Date(p.dueDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+                      return (
+                        <TouchableOpacity
+                          key={p.id}
+                          activeOpacity={0.8}
+                          style={[styles.instChip, selected && styles.instChipActive]}
+                          onPress={() => handleSelectInstallment(p.id)}
+                        >
+                          <Text style={[styles.instChipTitle, selected && styles.instChipTitleActive]}>
+                            #{p.dueNumber}{p.partialPayments.length > 0 ? ' · part paid' : ''}
+                          </Text>
+                          <Text style={[styles.instChipAmount, selected && styles.instChipAmountActive]}>
+                            ₹{formatCurrency(getAmountDue(p))}
+                          </Text>
+                          <Text style={[styles.instChipMeta, overdue && styles.instChipMetaOverdue]}>
+                            {overdue ? 'Overdue · ' : 'Due '}{due}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
 
               <View style={styles.summaryCard}>
                 <Text style={styles.summaryLabel}>Amount due</Text>
                 <Text style={styles.summaryAmount}>₹{formatCurrency(getAmountDue(targetPayment))}</Text>
                 <View style={styles.summaryMeta}>
                   <Text style={styles.metaText}>Due {new Date(targetPayment.dueDate).toLocaleDateString()}</Text>
-                  <Text style={styles.metaText}>Installment #{targetPayment.dueNumber}</Text>
+                  <Text style={styles.metaText}>Installment #{targetPayment.dueNumber} of {loan.payments.length}</Text>
                 </View>
               </View>
 
@@ -156,18 +230,20 @@ export default function PaymentRecorder({ loan, visible, paymentId, onSave, onCa
                 </View>
               )}
 
-              <Text style={styles.sectionLabel}>Quick amount</Text>
-              <View style={styles.quickRow}>
-                {[0.25, 0.5, 1].map((value) => (
-                  <TouchableOpacity
-                    key={value}
-                    activeOpacity={0.8}
-                    style={styles.quickBtn}
-                    onPress={() => handleQuickAmount(value)}
-                  >
-                    <Text style={styles.quickBtnText}>{Math.round(value * 100)}%</Text>
-                  </TouchableOpacity>
-                ))}
+              <View style={styles.block}>
+                <Text style={styles.sectionLabel}>Quick amount</Text>
+                <View style={styles.quickRow}>
+                  {[0.25, 0.5, 1].map((value) => (
+                    <TouchableOpacity
+                      key={value}
+                      activeOpacity={0.8}
+                      style={styles.quickBtn}
+                      onPress={() => handleQuickAmount(value)}
+                    >
+                      <Text style={styles.quickBtnText}>{Math.round(value * 100)}%</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
 
               <DatePicker
@@ -175,9 +251,10 @@ export default function PaymentRecorder({ loan, visible, paymentId, onSave, onCa
                 value={paidDate}
                 onChange={setPaidDate}
                 placeholder="Select date"
+                containerStyle={styles.block}
               />
 
-              <View style={styles.inputGroup}>
+              <View style={styles.block}>
                 <Text style={styles.sectionLabel}>Mode of payment</Text>
                 <View style={styles.modeRow}>
                   {PAYMENT_MODES.map(mode => (
@@ -192,49 +269,49 @@ export default function PaymentRecorder({ loan, visible, paymentId, onSave, onCa
                 </View>
               </View>
 
-              <View style={styles.inputGroup}>
+              <View style={styles.block}>
                 <Text style={styles.sectionLabel}>Amount paid</Text>
                 <TextInput
                   style={styles.input}
                   value={paidAmount}
                   onChangeText={setPaidAmount}
                   placeholder="Enter payment amount"
-                  placeholderTextColor="#aaa"
+                  placeholderTextColor={colors.ink3}
                   keyboardType="decimal-pad"
                 />
               </View>
 
-              <View style={styles.inputGroup}>
+              <View style={styles.block}>
                 <Text style={styles.sectionLabel}>Notes (optional)</Text>
                 <TextInput
                   style={styles.input}
                   value={chunkNotes}
                   onChangeText={setChunkNotes}
                   placeholder="e.g. cheque number, reason for split"
-                  placeholderTextColor="#aaa"
+                  placeholderTextColor={colors.ink3}
                 />
               </View>
+            </ScrollView>
 
-              <View style={styles.actions}>
-                <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-                  <Text style={styles.saveBtnText}>Record payment</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-                  <Text style={styles.cancelBtnText}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>All payments recorded for this loan</Text>
+            <View style={styles.actions}>
               <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-                <Text style={styles.cancelBtnText}>Close</Text>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
+                <Text style={styles.saveBtnText}>Record payment</Text>
               </TouchableOpacity>
             </View>
-          )}
-        </View>
+          </>
+        ) : (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>All payments recorded for this loan</Text>
+            <TouchableOpacity style={[styles.cancelBtn, styles.closeFull]} onPress={onCancel}>
+              <Text style={styles.cancelBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
-    </Modal>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -250,7 +327,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingHorizontal: 18,
     paddingTop: 10,
-    paddingBottom: 28,
+    // Cap the height so the header and buttons always stay on screen; the body scrolls.
+    maxHeight: '92%',
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 14,
@@ -269,7 +347,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   title: {
     fontSize: 19,
@@ -288,6 +366,59 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: colors.ink2,
     fontWeight: '700',
+  },
+  body: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  bodyContent: {
+    paddingBottom: 4,
+  },
+  // One consistent rhythm between every section of the form.
+  block: {
+    marginBottom: 16,
+  },
+  installmentRow: {
+    gap: 8,
+    paddingRight: 4,
+  },
+  instChip: {
+    minWidth: 112,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 2,
+  },
+  instChipActive: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  instChipTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.ink2,
+  },
+  instChipTitleActive: {
+    color: colors.accent,
+  },
+  instChipAmount: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.ink,
+  },
+  instChipAmountActive: {
+    color: colors.accent,
+  },
+  instChipMeta: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.ink3,
+  },
+  instChipMetaOverdue: {
+    color: colors.danger,
   },
   summaryCard: {
     backgroundColor: colors.accentSoft,
@@ -325,7 +456,7 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '700',
     color: colors.ink2,
-    marginBottom: 8,
+    marginBottom: 7,
   },
   historyCard: {
     backgroundColor: colors.surface2,
@@ -353,7 +484,6 @@ const styles = StyleSheet.create({
   quickRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 16,
   },
   quickBtn: {
     flex: 1,
@@ -369,9 +499,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-  inputGroup: {
-    marginBottom: 18,
-  },
   modeRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -381,10 +508,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.sm,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     backgroundColor: colors.surface,
-    marginBottom: 8,
   },
   modeBtnActive: {
     backgroundColor: colors.successSoft,
@@ -404,14 +530,17 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     paddingHorizontal: 12,
     paddingVertical: 12,
-    fontSize: 15,
+    fontSize: 14.5,
     backgroundColor: colors.surface,
     color: colors.ink,
   },
   actions: {
+    flexDirection: 'row',
     gap: 10,
+    paddingTop: 12,
   },
   saveBtn: {
+    flex: 2,
     backgroundColor: colors.success,
     borderRadius: radii.md,
     paddingVertical: 14,
@@ -423,9 +552,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   cancelBtn: {
+    flex: 1,
     backgroundColor: colors.surface2,
     borderRadius: radii.md,
-    paddingVertical: 12,
+    paddingVertical: 14,
     alignItems: 'center',
   },
   cancelBtnText: {
@@ -433,15 +563,19 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     fontWeight: '600',
   },
+  closeFull: {
+    flex: 0,
+    alignSelf: 'stretch',
+  },
   emptyState: {
     alignItems: 'center',
     paddingTop: 18,
     paddingBottom: 10,
+    gap: 16,
   },
   emptyText: {
     fontSize: 15,
     color: colors.ink2,
-    marginBottom: 20,
     textAlign: 'center',
   },
 });

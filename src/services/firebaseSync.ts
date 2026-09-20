@@ -39,6 +39,7 @@ const borrowersCol = (r: Ctx) => collection(r.db, 'users', r.uid, 'borrowers');
 const borrowerRef = (r: Ctx, borrowerId: string) => doc(borrowersCol(r), borrowerId);
 const loansCol = (r: Ctx, borrowerId: string) => collection(borrowerRef(r, borrowerId), 'loans');
 const loanRef = (r: Ctx, borrowerId: string, loanId: string) => doc(loansCol(r, borrowerId), loanId);
+const particularsCol = (r: Ctx) => collection(r.db, 'users', r.uid, 'savedParticulars');
 const paymentsCol = (r: Ctx, borrowerId: string, loanId: string) => collection(loanRef(r, borrowerId, loanId), 'payments');
 
 function borrowerData(b: any) {
@@ -398,8 +399,68 @@ export async function migrateLegacyData(): Promise<MigrationResult> {
   }
 }
 
+/**
+ * Reusable "saved particulars" for the EMI statement picker: users/{uid}/savedParticulars/{id}.
+ * NAMES ONLY. PAN numbers are deliberately never sent to Firestore; they live in the
+ * device's secure store (see services/panVault.ts). Fields are picked explicitly below
+ * so an extra property (e.g. a pan) on the argument can't leak into the document.
+ */
+export interface SavedParticularDoc {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export async function fetchSavedParticulars(): Promise<
+  { ok: true; items: SavedParticularDoc[] } | { ok: false; reason: string }
+> {
+  const r = await ready();
+  if (!r.ok) return { ok: false, reason: r.reason };
+
+  try {
+    const snap = await getDocs(particularsCol(r));
+    const items = snap.docs.map((d) => {
+      const data: any = d.data();
+      return { id: d.id, name: String(data.name ?? ''), createdAt: String(data.createdAt ?? '') };
+    });
+    return { ok: true, items: items.filter((i) => i.name) };
+  } catch (e) {
+    console.warn('[Firebase] fetchSavedParticulars failed', e);
+    return { ok: false, reason: 'api_error' };
+  }
+}
+
+export async function upsertSavedParticular(p: SavedParticularDoc) {
+  const r = await ready();
+  if (!r.ok) return { ok: false, reason: r.reason };
+
+  try {
+    await setDoc(doc(particularsCol(r), p.id), { name: p.name, createdAt: p.createdAt });
+    return { ok: true };
+  } catch (e) {
+    console.warn('[Firebase] upsertSavedParticular failed', e);
+    return { ok: false, reason: 'api_error' };
+  }
+}
+
+export async function deleteSavedParticular(id: string) {
+  const r = await ready();
+  if (!r.ok) return { ok: false, reason: r.reason };
+
+  try {
+    await deleteDoc(doc(particularsCol(r), id));
+    return { ok: true };
+  } catch (e) {
+    console.warn('[Firebase] deleteSavedParticular failed', e);
+    return { ok: false, reason: 'api_error' };
+  }
+}
+
 export default {
   migrateLegacyData,
+  fetchSavedParticulars,
+  upsertSavedParticular,
+  deleteSavedParticular,
   fetchAllData,
   addLoan,
   updateLoanInfo,

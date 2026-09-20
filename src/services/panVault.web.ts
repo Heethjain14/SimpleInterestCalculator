@@ -46,6 +46,15 @@ export async function getPan(id: string): Promise<string | null> {
   }
 }
 
+/** True when a PAN is stored for this id, even while the vault is locked. */
+export async function hasPan(id: string): Promise<boolean> {
+  try {
+    return await getVault().has(id);
+  } catch {
+    return false;
+  }
+}
+
 export async function setPan(id: string, pan: string): Promise<void> {
   await getVault().set(id, pan);
 }
