@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAuth } from '../context/AuthContext';
 import { NAV_ITEMS, Screen } from '../navigation/screens';
 import { colors, radii } from '../theme/tokens';
 
@@ -27,6 +28,7 @@ export default function Sidebar({
   onSelect,
   onClose,
 }: Props) {
+  const { user, signOut } = useAuth();
   const translateX = useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
 
@@ -130,6 +132,16 @@ export default function Sidebar({
             })}
           </View>
 
+          {/* Account */}
+          {user && (
+            <View style={styles.account}>
+              <Text style={styles.accountEmail} numberOfLines={1}>{user.email}</Text>
+              <TouchableOpacity onPress={() => { onClose(); signOut().catch(() => {}); }}>
+                <Text style={styles.signOutText}>Sign out</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Footer */}
           <TouchableOpacity
             style={styles.closeButton}
@@ -232,6 +244,25 @@ const styles = StyleSheet.create({
 
   navLabelActive: {
     color: '#FFFFFF',
+  },
+
+  account: {
+    borderTopWidth: 1,
+    borderTopColor: colors.sidebarBorder,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    gap: 6,
+  },
+
+  accountEmail: {
+    color: colors.sidebarInk,
+    fontSize: 12.5,
+  },
+
+  signOutText: {
+    color: '#FCA5A5',
+    fontWeight: '700',
+    fontSize: 13.5,
   },
 
   closeButton: {

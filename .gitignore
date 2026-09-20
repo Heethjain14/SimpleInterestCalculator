@@ -46,3 +46,6 @@ yarn-error.*
 
 # Impeccable design-skill cache
 .impeccable/
+
+# Firebase CLI cache
+.firebase/

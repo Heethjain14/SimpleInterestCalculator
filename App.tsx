@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import {
-  StyleSheet, Text, View, TouchableOpacity,
+  ActivityIndicator, StyleSheet, Text, View, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import Constants from 'expo-constants';
+import { AuthProvider, useAuth } from './src/context/AuthContext';
+import LoginScreen from './src/screens/LoginScreen';
 import { StorageProvider } from './src/context/StorageContext';
+import { PanVaultProvider } from './src/context/PanVaultContext';
 import Sidebar from './src/components/Sidebar';
 import Dashboard from './src/screens/Dashboard';
 import DuePaymentsList from './src/screens/DuePaymentsList';
@@ -16,9 +18,6 @@ import { colors, radii } from './src/theme/tokens';
 
 // Re-export for ShareResultCard backward compatibility
 export type { CalculationResult } from './src/screens/SimpleInterestCalculator';
-
-const _extra = (Constants as any).expoConfig?.extra ?? (Constants as any).manifest?.extra ?? {};
-(globalThis as any).MONGO_API_URL = _extra.mongoApiUrl ?? (globalThis as any).MONGO_API_URL ?? '';
 
 function AppShell() {
   const [screen, setScreen] = useState<Screen>('dashboard');
@@ -91,10 +90,32 @@ function AppShell() {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <StorageProvider>
-        <AppShell />
-      </StorageProvider>
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
     </SafeAreaProvider>
+  );
+}
+
+/** Shows the login screen until a user is signed in, then mounts storage scoped to that user. */
+function AuthGate() {
+  const { user, initializing } = useAuth();
+
+  if (initializing) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator color={colors.accent} />
+      </View>
+    );
+  }
+  if (!user) return <LoginScreen />;
+
+  return (
+    <StorageProvider key={user.uid} uid={user.uid}>
+      <PanVaultProvider>
+        <AppShell />
+      </PanVaultProvider>
+    </StorageProvider>
   );
 }
 

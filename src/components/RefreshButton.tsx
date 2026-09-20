@@ -14,6 +14,7 @@ const ERROR_MESSAGES: Record<RefreshFailure['reason'], string> = {
   network: 'Network error while contacting the API server.',
   invalid_response: 'The API server returned an unexpected response format.',
   api_error: 'The API server reported an error. Check that it is running and reachable.',
+  not_signed_in: 'You are signed out. Sign in again to sync.',
 };
 
 /** Pulls the latest borrower data from the API server with user feedback. */

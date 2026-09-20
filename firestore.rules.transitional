@@ -1,0 +1,20 @@
+rules_version = '2';
+
+// TRANSITIONAL rules: deploy these only until the one-time legacy migration has run
+// (sign in once in the new app), then deploy firestore.rules.
+// Legacy top-level `borrowers/**` becomes read-only for signed-in, non-anonymous users
+// (needed to copy it into users/{uid}); the old anonymous access is removed straight away.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null
+                         && request.auth.uid == uid
+                         && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    match /borrowers/{document=**} {
+      allow read: if request.auth != null
+                  && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+  }
+}

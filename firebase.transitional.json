@@ -1,0 +1,6 @@
+{
+  "firestore": {
+    "rules": "firestore.rules.transitional",
+    "indexes": "firestore.indexes.json"
+  }
+}

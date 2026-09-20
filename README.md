@@ -1,13 +1,13 @@
 # Portfolio Ledger
 
 A mobile-first loan management app for individual and small-scale lenders,
-built with React Native (Expo) and a self-hosted MongoDB API. It replaces
+built with React Native (Expo) and Firebase (Auth + Firestore). It replaces
 paper ledgers and spreadsheets with a structured, at-a-glance record of who
 owes what, what's overdue, and what's already been collected.
 
-Data is stored on-device (AsyncStorage) first and syncs in the background to
-a small self-hosted API backed by MongoDB Atlas — the app is fully usable
-offline, and the backend is optional.
+You sign in with email/password; data is stored on-device (AsyncStorage) first
+and syncs in the background to your private area of Firestore. It also runs
+as a web app / iPhone home-screen app (see [DEPLOY.md](DEPLOY.md)).
 
 ## Features
 
@@ -42,15 +42,21 @@ Other notable behavior:
   and web via `react-native-web`.
 - **Storage**: `@react-native-async-storage/async-storage` as the local
   source of truth.
-- **API server**: Node.js + Express + the official `mongodb` driver, talking
-  to a MongoDB Atlas cluster.
+- **Backend**: Firebase Authentication (email/password) and Cloud Firestore,
+  accessed directly from the client; `firestore.rules` restricts every user to
+  their own `users/{uid}` subtree. There is no server of our own.
+- **Hosting**: Firebase Hosting for the web build (see [DEPLOY.md](DEPLOY.md)).
 
 ## Project structure
 
 ```
 App.tsx                       Root shell: sidebar navigation + screen switch
 index.ts                      Expo entry point
-app.json                      Expo config, incl. extra.mongoApiUrl
+app.json                      Expo config, incl. extra.firebaseConfig
+firestore.rules               Firestore security rules (owner-only access)
+firebase.json                 Firebase Hosting + rules config
+public/                       Web-only files: PWA manifest, icons, index.html template
+DEPLOY.md                     Rules migration + hosting steps
 eas.json                      EAS Build profiles
 
 src/
@@ -64,36 +70,33 @@ src/
     EmiCalculator.tsx            EMI schedule generator
     BorrowerList.tsx             Client list, search, add/select
     BorrowerDetail.tsx           Borrower profile: loans, payments, CSV export
+    LoginScreen.tsx              Email/password sign-in and sign-up
 
   components/                  Reusable UI widgets shared across screens
     BorrowerForm.tsx             Create/edit borrower (+ optional new loan)
     PaymentRecorder.tsx          Modal to record an installment payment
     DatePicker.tsx               Cross-platform date input
     ShareResultCard.tsx          Shareable PNG card for Simple Interest results
-    RefreshButton.tsx            Triggers a pull from the API server
+    RefreshButton.tsx            Triggers a pull from Firestore
     Sidebar.tsx                  Slide-in navigation drawer
 
-  context/StorageContext.tsx    Borrower/loan state, AsyncStorage + Mongo API sync
+  context/AuthContext.tsx       Firebase email/password auth state
+  context/StorageContext.tsx    Borrower/loan state, AsyncStorage + Firestore sync
   hooks/useStorage.ts           Alias for useStorageContext()
   hooks/useNotifications.ts     Stub for future payment-reminder notifications
   navigation/screens.ts         Screen list + sidebar labels/icons
 
-  services/mongoSync.ts         HTTP client for the server/ Express API
+  services/firebaseApp.ts       Firebase init (app, auth, Firestore, optional App Check)
+  services/firebaseSync.ts      Firestore reads/writes under users/{uid}
   utils/duePayments.ts          Overdue-installment logic
   utils/portfolioMetrics.ts     Portfolio aggregate metrics
   utils/format.ts               Currency/date formatting helpers
-
-server/                       Express + MongoDB REST API
-  src/index.js                  App entry point, starts the HTTP server
-  src/db.js                     MongoDB connection (reads MONGODB_URI from .env)
-  src/routes.js                 REST routes mirroring mongoSync.ts's function set
-  .env.example                  Template for server/.env (gitignored)
 ```
 
 ## Data flow
 
 ```
-UI components  →  StorageContext (AsyncStorage)  →  mongoSync.ts  →  server/ (Express)  →  MongoDB Atlas
+UI components  ->  StorageContext (AsyncStorage)  ->  firebaseSync.ts  ->  Firestore (users/{uid}/...)
 ```
 
 - **UI components** call `useStorageContext()` to read `borrowers` and to
@@ -101,16 +104,15 @@ UI components  →  StorageContext (AsyncStorage)  →  mongoSync.ts  →  serve
   `refreshFromServer`.
 - **`src/context/StorageContext.tsx`** is the single source of truth. Every
   mutation is written to `AsyncStorage` (key `borrowers_data`) first; syncing
-  to the API server is attempted afterward on a best-effort basis and never
-  blocks or rolls back the local write. `refreshFromServer` is the only pull
-  path — it fetches the full dataset and overwrites local state.
-- **`src/services/mongoSync.ts`** is a thin HTTP client (plain REST/JSON,
-  one function per operation) for the `server/` Express API.
-- **`server/`** is a small Express app that reads/writes a `borrowers`
-  collection in your MongoDB Atlas cluster via the official `mongodb`
-  driver. Each borrower document embeds its loans, and each loan embeds its
-  payments — the same shape as the app's own `Borrower`/`Loan`/`Payment`
-  types, so no schema translation is needed.
+  to Firestore is attempted afterward on a best-effort basis and never blocks
+  or rolls back the local write. `refreshFromServer` is the pull path — it
+  fetches the full dataset and overwrites local state; it also runs
+  automatically on sign-in when nothing is cached on the device.
+- **`src/services/firebaseSync.ts`** stores each borrower at
+  `users/{uid}/borrowers/{id}`, loans in a `loans` subcollection and
+  installments in a `payments` subcollection.
+- **Auth**: `AuthContext` + `LoginScreen` gate the app; the security rules
+  (`firestore.rules`) only let the signed-in owner read or write their subtree.
 
 ## Setup
 
@@ -131,44 +133,16 @@ Then press `a` for Android, `i` for iOS, `w` for web, or scan the QR code
 with Expo Go. (`npm run android` / `npm run ios` / `npm run web` do the same
 directly.)
 
-Without any further configuration, the app works fully offline: everything
-is persisted to on-device `AsyncStorage` and the Dashboard, Due Payments, and
-Clients screens work against local data. MongoDB sync is optional.
+Sign in on the first screen (create an account the first time). Data is cached
+on-device in `AsyncStorage`, so screens stay usable when offline.
 
-### MongoDB Atlas + API server setup (optional)
+### Firebase setup
 
-1. Create a free cluster at [cloud.mongodb.com](https://cloud.mongodb.com)
-   and get its connection string (Atlas dashboard → Database → Connect →
-   Drivers → copy the `mongodb+srv://...` URI, then substitute in your
-   database user's username/password).
-2. Set it up:
-
-   ```bash
-   cd server
-   npm install
-   cp .env.example .env
-   # edit .env: paste your MONGODB_URI, set MONGODB_DB / PORT if you want non-defaults
-   npm start                         # serves on http://localhost:4000
-   ```
-
-   The database and `borrowers` collection are created automatically on the
-   first write — nothing to pre-create in Atlas.
-3. Point the app at the server: set `expo.extra.mongoApiUrl` in `app.json`.
-   The default (`http://localhost:4000`) works when running `expo start --web`
-   on the same machine as the server. **On a physical device via Expo Go,
-   `localhost` means the phone itself** — use your computer's LAN IP instead
-   (e.g. `http://192.168.1.5:4000`), and make sure the phone and computer are
-   on the same network.
-4. Restart the Expo dev server. `App.tsx` reads this value via
-   `expo-constants` at startup and assigns it to `globalThis.MONGO_API_URL`,
-   which `StorageContext` reads before every sync call.
-5. Use the **Refresh** button (Dashboard, Due Payments, or Clients screen)
-   to pull the full dataset, or just start creating borrowers/loans —
-   changes push automatically in the background.
-
-The server has no auth in front of it yet — fine for local development or a
-private network, but add an API key or similar before deploying it
-somewhere publicly reachable.
+The Firebase web config lives in `app.json` under `expo.extra.firebaseConfig`
+(these are public client identifiers, not secrets). In the Firebase console
+enable **Authentication -> Email/Password** and create the Firestore database,
+then deploy `firestore.rules`. Step-by-step instructions, including moving
+older data into a per-user account, are in [DEPLOY.md](DEPLOY.md).
 
 ### Build for production (EAS)
 
@@ -181,10 +155,9 @@ The EAS project ID lives in `app.json` (`expo.extra.eas.projectId`) and
 
 ## Testing
 
-There's no automated test suite for the React Native app itself. To sanity
-check the API server directly (useful when setting up or debugging Mongo
-sync), hit its routes with `curl` once it's running, e.g.
-`curl http://localhost:4000/health` and `curl http://localhost:4000/api/data`.
+There's no automated test suite for the React Native app itself. The security
+rules can be exercised with the Firebase Emulator Suite
+(`firebase emulators:start --only firestore`) plus `@firebase/rules-unit-testing`.
 
 ## Interest formulas
 
@@ -225,8 +198,9 @@ Payment  { id, dueDate, dueNumber, principal, interest, totalAmount,
 
 | Issue | Fix |
 |---|---|
-| Refresh fails with a network error | Confirm the API server (`server/`) is running and `expo.extra.mongoApiUrl` in `app.json` points at a reachable address — `localhost` only works when the app and server run on the same machine. |
-| Refresh returns 0 borrowers but you expect data | Confirm you're pointed at the right MongoDB database/cluster, and that data was actually written there. |
+| Sign-in says the operation is disabled | Enable Email/Password under Authentication -> Sign-in method in the Firebase console. |
+| Refresh fails with a permission error | The deployed Firestore rules must be the ones in `firestore.rules`, and you must be signed in (see DEPLOY.md). |
+| Refresh returns 0 borrowers but you expect data | Older data lives in the top-level `borrowers` collection and is copied into your account on first sign-in while the transitional rules are deployed (DEPLOY.md). |
 | Share/export fails on an emulator | Some emulators lack share targets; test on a physical device. |
 | Date picker behaves differently across platforms | Expected — Android shows a native inline dialog, iOS opens a bottom-sheet modal with Done/Cancel, and web renders a native `<input type="date">` (`src/components/DatePicker.tsx`). |
 

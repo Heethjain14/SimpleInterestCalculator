@@ -4,10 +4,12 @@ import { Borrower, Loan } from '../types';
 import firebaseSync from '../services/firebaseSync';
 
 const STORAGE_KEY = 'borrowers_data';
+/** uid of the user whose data is cached under STORAGE_KEY, so another account never sees it. */
+const OWNER_KEY = 'borrowers_data_owner';
 
 export type RefreshResult =
   | { ok: true; count: number }
-  | { ok: false; reason: 'no_url' | 'network' | 'invalid_response' | 'api_error' };
+  | { ok: false; reason: 'no_url' | 'network' | 'invalid_response' | 'api_error' | 'not_signed_in' };
 
 interface StorageContextValue {
   borrowers: Borrower[];
@@ -64,22 +66,34 @@ function sanitizeBorrowers(borrowers: Borrower[]): Borrower[] {
 }
 
 /** Shared borrower storage backed by AsyncStorage with Firestore sync. */
-export function StorageProvider({ children }: { children: ReactNode }) {
+export function StorageProvider({ children, uid }: { children: ReactNode; uid: string }) {
   const [borrowers, setBorrowers] = useState<Borrower[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<boolean> => {
+    let hasCache = false;
     try {
+      // The on-device cache belongs to one account. A cache with no recorded owner predates
+      // sign-in, so the first account to sign in adopts it; a different account starts clean.
+      const owner = await AsyncStorage.getItem(OWNER_KEY);
+      if (owner && owner !== uid) {
+        await AsyncStorage.removeItem(STORAGE_KEY);
+      }
+      await AsyncStorage.setItem(OWNER_KEY, uid);
+
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
-      if (raw) setBorrowers(sanitizeBorrowers(JSON.parse(raw)));
+      if (raw) {
+        const parsed = sanitizeBorrowers(JSON.parse(raw));
+        setBorrowers(parsed);
+        hasCache = parsed.length > 0;
+      }
     } catch (e) {
       console.error('Failed to load borrowers', e);
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+    return hasCache;
+  }, [uid]);
 
   const refreshFromServer = useCallback(async (): Promise<RefreshResult> => {
     try {
@@ -115,6 +129,19 @@ export function StorageProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   }, []);
+
+  // On sign-in: copy any pre-auth data into this account (one time), and pull from Firestore
+  // when nothing is cached locally (new device / browser) or the migration just ran.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const hadCache = await load();
+      const migration = await firebaseSync.migrateLegacyData();
+      if (cancelled) return;
+      if (!hadCache || migration.status === 'done') await refreshFromServer();
+    })();
+    return () => { cancelled = true; };
+  }, [load, refreshFromServer]);
 
   const persistLocal = async (updated: Borrower[]) => {
     setBorrowers(updated);
@@ -300,7 +327,7 @@ export function StorageProvider({ children }: { children: ReactNode }) {
 
   return (
     <StorageContext.Provider
-      value={{ borrowers, loading, saveBorrower, saveLoan, deleteLoan, deleteBorrower, getBorrower, reload: load, refreshFromServer }}
+      value={{ borrowers, loading, saveBorrower, saveLoan, deleteLoan, deleteBorrower, getBorrower, reload: async () => { await load(); }, refreshFromServer }}
     >
       {children}
     </StorageContext.Provider>

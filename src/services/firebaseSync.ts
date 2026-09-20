@@ -1,71 +1,45 @@
 /**
- * Firestore client for the app's data (see the Firebase migration plan).
- * Layout: borrowers/{id}, borrowers/{id}/loans/{id}, borrowers/{id}/loans/{id}/payments/{id}.
- * Config comes from app.json's expo.extra.firebaseConfig; auth is anonymous,
- * required by the Firestore security rules for any read/write.
+ * Firestore client for the app's data.
+ * Layout (per signed-in user): users/{uid}/borrowers/{id}, .../loans/{id}, .../payments/{id}.
+ * Access is enforced by firestore.rules: a user can only touch their own users/{uid} subtree.
+ * Config and auth setup live in firebaseApp.ts; the user must be signed in (see AuthContext).
  */
-import Constants from 'expo-constants';
-import { FirebaseApp, getApp, getApps, initializeApp } from 'firebase/app';
-import { Auth, getAuth, signInAnonymously } from 'firebase/auth';
 import {
   Firestore,
   QueryDocumentSnapshot,
   collection,
-  collectionGroup,
   deleteDoc,
   doc,
   getDoc,
   getDocs,
-  getFirestore,
   setDoc,
   updateDoc,
   writeBatch,
 } from 'firebase/firestore';
 import { Borrower, Loan, Payment } from '../types';
+import { getFirebase } from './firebaseApp';
 
-function getFirebaseConfig(): any {
-  const extra = (Constants as any).expoConfig?.extra ?? (Constants as any).manifest?.extra ?? {};
-  return extra.firebaseConfig;
-}
+type Ready =
+  | { ok: true; db: Firestore; uid: string }
+  | { ok: false; reason: 'no_url' | 'network' | 'not_signed_in' };
 
-let app: FirebaseApp | null = null;
-let db: Firestore | null = null;
-let auth: Auth | null = null;
-let authReady: Promise<void> | null = null;
-
-function init(): { db: Firestore; auth: Auth } | null {
-  const config = getFirebaseConfig();
-  if (!config || !config.apiKey) return null;
-  if (!app) {
-    app = getApps().length ? getApp() : initializeApp(config);
-    db = getFirestore(app);
-    auth = getAuth(app);
-  }
-  return { db: db!, auth: auth! };
-}
-
-/** Ensures anonymous sign-in has completed (Firestore rules require request.auth != null). */
-function ensureAuth(a: Auth): Promise<void> {
-  if (!authReady) {
-    authReady = signInAnonymously(a).then(() => undefined);
-  }
-  return authReady;
-}
-
-type Ready = { ok: true; db: Firestore } | { ok: false; reason: 'no_url' | 'network' };
-
-/** Every exported function starts here: no config configured yet, or sign-in failed. */
+/** Every exported function starts here: Firebase must be configured and a real user signed in. */
 async function ready(): Promise<Ready> {
-  const ctx = init();
-  if (!ctx) return { ok: false, reason: 'no_url' };
-  try {
-    await ensureAuth(ctx.auth);
-  } catch (e) {
-    console.warn('[Firebase] Anonymous sign-in failed', e);
-    return { ok: false, reason: 'network' };
-  }
-  return { ok: true, db: ctx.db };
+  const fb = getFirebase();
+  if (!fb) return { ok: false, reason: 'no_url' };
+  await fb.auth.authStateReady();
+  const user = fb.auth.currentUser;
+  if (!user || user.isAnonymous) return { ok: false, reason: 'not_signed_in' };
+  return { ok: true, db: fb.db, uid: user.uid };
 }
+
+type Ctx = Extract<Ready, { ok: true }>;
+
+const borrowersCol = (r: Ctx) => collection(r.db, 'users', r.uid, 'borrowers');
+const borrowerRef = (r: Ctx, borrowerId: string) => doc(borrowersCol(r), borrowerId);
+const loansCol = (r: Ctx, borrowerId: string) => collection(borrowerRef(r, borrowerId), 'loans');
+const loanRef = (r: Ctx, borrowerId: string, loanId: string) => doc(loansCol(r, borrowerId), loanId);
+const paymentsCol = (r: Ctx, borrowerId: string, loanId: string) => collection(loanRef(r, borrowerId, loanId), 'payments');
 
 function borrowerData(b: any) {
   return {
@@ -124,8 +98,7 @@ function toBorrower(d: QueryDocumentSnapshot): Omit<Borrower, 'loans'> {
   return { id: d.id, name: data.name, phone: data.phone, notes: data.notes, createdAt: data.createdAt };
 }
 
-/** `_borrowerId` is read off the doc's own path, not stored as a field. */
-function toLoan(d: QueryDocumentSnapshot): Omit<Loan, 'payments'> & { _borrowerId: string } {
+function toLoan(d: QueryDocumentSnapshot): Omit<Loan, 'payments'> {
   const data: any = d.data();
   return {
     id: d.id,
@@ -137,12 +110,10 @@ function toLoan(d: QueryDocumentSnapshot): Omit<Loan, 'payments'> & { _borrowerI
     repaymentMode: data.repaymentMode,
     disbursedAmount: data.disbursedAmount ?? data.principal,
     notes: data.notes,
-    _borrowerId: d.ref.parent.parent!.id,
   };
 }
 
-/** `_loanId` is read off the doc's own path, not stored as a field. */
-function toPayment(d: QueryDocumentSnapshot): Payment & { _loanId: string } {
+function toPayment(d: QueryDocumentSnapshot): Payment {
   const data: any = d.data();
   return {
     id: d.id,
@@ -159,41 +130,33 @@ function toPayment(d: QueryDocumentSnapshot): Payment & { _loanId: string } {
     delayInterest: data.delayInterest,
     paymentMode: data.paymentMode ?? undefined,
     notes: data.notes ?? undefined,
-    _loanId: d.ref.parent.parent!.id,
   };
 }
 
-/** Full sync: every borrower with all their loans + payment schedules, as 3 flat queries. */
+/**
+ * Full sync: every borrower with all their loans + payment schedules. Security rules only
+ * allow reads under the user's own subtree, so this walks it (borrowers -> loans -> payments)
+ * with parallel reads rather than collection-group queries.
+ */
 export async function fetchAllData() {
   const r = await ready();
   if (!r.ok) return { ok: false, reason: r.reason };
 
   try {
-    const [borrowersSnap, loansSnap, paymentsSnap] = await Promise.all([
-      getDocs(collection(r.db, 'borrowers')),
-      getDocs(collectionGroup(r.db, 'loans')),
-      getDocs(collectionGroup(r.db, 'payments')),
-    ]);
-
-    const paymentsByLoan = new Map<string, Payment[]>();
-    for (const d of paymentsSnap.docs) {
-      const { _loanId, ...payment } = toPayment(d);
-      if (!paymentsByLoan.has(_loanId)) paymentsByLoan.set(_loanId, []);
-      paymentsByLoan.get(_loanId)!.push(payment);
-    }
-    for (const list of paymentsByLoan.values()) list.sort((a, b) => a.dueNumber - b.dueNumber);
-
-    const loansByBorrower = new Map<string, Loan[]>();
-    for (const d of loansSnap.docs) {
-      const { _borrowerId, ...loan } = toLoan(d);
-      if (!loansByBorrower.has(_borrowerId)) loansByBorrower.set(_borrowerId, []);
-      loansByBorrower.get(_borrowerId)!.push({ ...loan, payments: paymentsByLoan.get(loan.id) ?? [] });
-    }
-
-    const borrowers: Borrower[] = borrowersSnap.docs.map((d) => ({
-      ...toBorrower(d),
-      loans: loansByBorrower.get(d.id) ?? [],
-    }));
+    const borrowersSnap = await getDocs(borrowersCol(r));
+    const borrowers: Borrower[] = await Promise.all(
+      borrowersSnap.docs.map(async (bDoc) => {
+        const loansSnap = await getDocs(loansCol(r, bDoc.id));
+        const loans: Loan[] = await Promise.all(
+          loansSnap.docs.map(async (lDoc) => {
+            const paymentsSnap = await getDocs(paymentsCol(r, bDoc.id, lDoc.id));
+            const payments = paymentsSnap.docs.map(toPayment).sort((x, y) => x.dueNumber - y.dueNumber);
+            return { ...toLoan(lDoc), payments };
+          }),
+        );
+        return { ...toBorrower(bDoc), loans };
+      }),
+    );
 
     return { ok: true, borrowers };
   } catch (e) {
@@ -216,19 +179,19 @@ export async function addLoan(loan: any) {
     const borrowerId = loan.borrowerId;
     const loanId = loan.loanId;
 
-    const borrowerRef = doc(r.db, 'borrowers', borrowerId);
-    const existing = await getDoc(borrowerRef);
+    const bRef = borrowerRef(r, borrowerId);
+    const existing = await getDoc(bRef);
     if (!existing.exists()) {
-      await setDoc(borrowerRef, borrowerData({ ...loan, name: loan.borrowerName, notes: loan.borrowerNotes, createdAt: loan.createdAt || new Date().toISOString() }));
+      await setDoc(bRef, borrowerData({ ...loan, name: loan.borrowerName, notes: loan.borrowerNotes, createdAt: loan.createdAt || new Date().toISOString() }));
     }
 
-    await setDoc(doc(r.db, 'borrowers', borrowerId, 'loans', loanId), loanData(loan));
+    await setDoc(loanRef(r, borrowerId, loanId), loanData(loan));
 
     const payments = loan.payments ?? [];
     if (payments.length) {
       const batch = writeBatch(r.db);
-      const paymentsCol = collection(r.db, 'borrowers', borrowerId, 'loans', loanId, 'payments');
-      for (const p of payments) batch.set(doc(paymentsCol, p.id), paymentData(p));
+      const pCol = paymentsCol(r, borrowerId, loanId);
+      for (const p of payments) batch.set(doc(pCol, p.id), paymentData(p));
       await batch.commit();
     }
 
@@ -254,7 +217,7 @@ export async function updateLoanInfo(borrowerId: string, loan: any) {
     if (loan.repaymentMode !== undefined) set.repaymentMode = loan.repaymentMode;
     if (loan.loanNotes !== undefined) set.notes = loan.loanNotes;
 
-    await updateDoc(doc(r.db, 'borrowers', borrowerId, 'loans', loan.loanId), set);
+    await updateDoc(loanRef(r, borrowerId, loan.loanId), set);
     return { ok: true };
   } catch (e) {
     console.warn('[Firebase] updateLoanInfo failed', e);
@@ -273,7 +236,7 @@ export async function updateBorrowerInfo(borrower: any) {
     if (borrower.phone !== undefined) set.phone = borrower.phone;
     if (borrower.notes !== undefined) set.notes = borrower.notes;
 
-    await updateDoc(doc(r.db, 'borrowers', borrower.borrowerId), set);
+    await updateDoc(borrowerRef(r, borrower.borrowerId), set);
     return { ok: true };
   } catch (e) {
     console.warn('[Firebase] updateBorrowerInfo failed', e);
@@ -287,12 +250,12 @@ export async function writePaymentSchedule(borrowerId: string, loanId: string, p
   if (!r.ok) return { ok: false, reason: r.reason };
 
   try {
-    const paymentsCol = collection(r.db, 'borrowers', borrowerId, 'loans', loanId, 'payments');
-    const existing = await getDocs(paymentsCol);
+    const pCol = paymentsCol(r, borrowerId, loanId);
+    const existing = await getDocs(pCol);
 
     const batch = writeBatch(r.db);
     for (const d of existing.docs) batch.delete(d.ref);
-    for (const p of payments) batch.set(doc(paymentsCol, p.id), paymentData(p));
+    for (const p of payments) batch.set(doc(pCol, p.id), paymentData(p));
     await batch.commit();
 
     return { ok: true };
@@ -317,7 +280,7 @@ export async function updatePayment(
     for (const key of ['paidDate', 'paidAmount', 'delayDays', 'delayInterest'] as const) {
       if (updates[key] !== undefined) set[key] = updates[key];
     }
-    await updateDoc(doc(r.db, 'borrowers', borrowerId, 'loans', loanId, 'payments', paymentId), set);
+    await updateDoc(doc(paymentsCol(r, borrowerId, loanId), paymentId), set);
     return { ok: true };
   } catch (e) {
     console.warn('[Firebase] updatePayment failed', e);
@@ -331,16 +294,16 @@ export async function deleteLoan(borrowerId: string, loanId: string) {
   if (!r.ok) return { ok: false, reason: r.reason };
 
   try {
-    const loanRef = doc(r.db, 'borrowers', borrowerId, 'loans', loanId);
-    const paymentsSnap = await getDocs(collection(loanRef, 'payments'));
+    const lRef = loanRef(r, borrowerId, loanId);
+    const paymentsSnap = await getDocs(collection(lRef, 'payments'));
 
     const batch = writeBatch(r.db);
     for (const p of paymentsSnap.docs) batch.delete(p.ref);
-    batch.delete(loanRef);
+    batch.delete(lRef);
     await batch.commit();
 
-    const remainingLoans = await getDocs(collection(r.db, 'borrowers', borrowerId, 'loans'));
-    if (remainingLoans.empty) await deleteDoc(doc(r.db, 'borrowers', borrowerId));
+    const remainingLoans = await getDocs(loansCol(r, borrowerId));
+    if (remainingLoans.empty) await deleteDoc(borrowerRef(r, borrowerId));
 
     return { ok: true };
   } catch (e) {
@@ -355,7 +318,7 @@ export async function deleteBorrower(borrowerId: string) {
   if (!r.ok) return { ok: false, reason: r.reason };
 
   try {
-    const loansSnap = await getDocs(collection(r.db, 'borrowers', borrowerId, 'loans'));
+    const loansSnap = await getDocs(loansCol(r, borrowerId));
     for (const loanDoc of loansSnap.docs) {
       const paymentsSnap = await getDocs(collection(loanDoc.ref, 'payments'));
       const batch = writeBatch(r.db);
@@ -364,7 +327,7 @@ export async function deleteBorrower(borrowerId: string) {
       await batch.commit();
     }
 
-    await deleteDoc(doc(r.db, 'borrowers', borrowerId));
+    await deleteDoc(borrowerRef(r, borrowerId));
     return { ok: true };
   } catch (e) {
     console.warn('[Firebase] deleteBorrower failed', e);
@@ -372,7 +335,71 @@ export async function deleteBorrower(borrowerId: string) {
   }
 }
 
+export type MigrationResult =
+  | { status: 'done'; copied: number }
+  | { status: 'already_done' | 'nothing_to_migrate' | 'skipped' };
+
+/**
+ * One-time copy of the pre-auth data (top-level borrowers/**, readable only under the
+ * transitional rules) into the signed-in user's users/{uid} subtree. Ids are preserved, so a
+ * re-run after a partial failure is harmless; the marker doc is written last. If the legacy tree
+ * is unreadable (final rules already deployed) it records 'skipped' so we stop asking.
+ */
+export async function migrateLegacyData(): Promise<MigrationResult> {
+  const r = await ready();
+  if (!r.ok) return { status: 'skipped' };
+
+  const markerRef = doc(r.db, 'users', r.uid, 'meta', 'legacyMigration');
+  try {
+    if ((await getDoc(markerRef)).exists()) return { status: 'already_done' };
+  } catch (e) {
+    console.warn('[Firebase] migration marker read failed', e);
+    return { status: 'skipped' };
+  }
+
+  let legacyBorrowers;
+  try {
+    legacyBorrowers = await getDocs(collection(r.db, 'borrowers'));
+  } catch (e: any) {
+    if (e?.code === 'permission-denied') {
+      await setDoc(markerRef, { status: 'skipped', at: new Date().toISOString() }).catch(() => {});
+    } else {
+      console.warn('[Firebase] legacy read failed (will retry next launch)', e);
+    }
+    return { status: 'skipped' };
+  }
+
+  try {
+    let copied = 0;
+    for (const bDoc of legacyBorrowers.docs) {
+      await setDoc(borrowerRef(r, bDoc.id), bDoc.data());
+      const loansSnap = await getDocs(collection(bDoc.ref, 'loans'));
+      for (const lDoc of loansSnap.docs) {
+        await setDoc(loanRef(r, bDoc.id, lDoc.id), lDoc.data());
+        const paymentsSnap = await getDocs(collection(lDoc.ref, 'payments'));
+        const pCol = paymentsCol(r, bDoc.id, lDoc.id);
+        for (let i = 0; i < paymentsSnap.docs.length; i += 400) {
+          const batch = writeBatch(r.db);
+          for (const pDoc of paymentsSnap.docs.slice(i, i + 400)) batch.set(doc(pCol, pDoc.id), pDoc.data());
+          await batch.commit();
+        }
+      }
+      copied++;
+    }
+    await setDoc(markerRef, {
+      status: copied ? 'done' : 'nothing_to_migrate',
+      borrowers: copied,
+      at: new Date().toISOString(),
+    });
+    return copied ? { status: 'done', copied } : { status: 'nothing_to_migrate' };
+  } catch (e) {
+    console.warn('[Firebase] legacy migration failed (will retry next launch)', e);
+    return { status: 'skipped' };
+  }
+}
+
 export default {
+  migrateLegacyData,
   fetchAllData,
   addLoan,
   updateLoanInfo,

@@ -18,11 +18,17 @@
       "package": "com.harshit_2005.SimpleInterestCalculator"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png",
+      "name": "Portfolio Ledger",
+      "shortName": "Ledger",
+      "themeColor": "#12172B",
+      "backgroundColor": "#F6F7F9"
     },
     "sdkVersion": "57.0.0",
     "extra": {
-      "mongoApiUrl": "http://localhost:4000",
+      "allowSignUp": false,
       "firebaseConfig": {
         "apiKey": "AIzaSyBu6dTBYnY9Kpa3Z1wHDDhDyaIXk1Cu-JM",
         "authDomain": "simple-interest-calculat-8980c.firebaseapp.com",

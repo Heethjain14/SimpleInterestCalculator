@@ -10,10 +10,15 @@ export interface DuePaymentItem {
   amountDue: number;
 }
 
-function startOfDay(d: Date): Date {
+export function startOfDay(d: Date): Date {
   const copy = new Date(d);
   copy.setHours(0, 0, 0, 0);
   return copy;
+}
+
+/** Whole calendar days from `from` to `to` (local time); negative if `to` is earlier. */
+export function calendarDaysBetween(from: Date, to: Date): number {
+  return Math.round((startOfDay(to).getTime() - startOfDay(from).getTime()) / 86_400_000);
 }
 
 /** Remaining amount still owed on a payment installment. */
@@ -47,7 +52,7 @@ export function getDuePayments(borrowers: Borrower[]): DuePaymentItem[] {
         if (!isPaymentOverdue(payment, today)) continue;
 
         const due = startOfDay(new Date(payment.dueDate));
-        const daysOverdue = Math.floor((today.getTime() - due.getTime()) / 86_400_000);
+        const daysOverdue = calendarDaysBetween(due, today);
 
         items.push({
           borrowerId: borrower.id,

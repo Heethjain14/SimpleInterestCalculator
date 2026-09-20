@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Loan, Payment, PaymentMode, PartialPayment } from '../types';
 import DatePicker from './DatePicker';
-import { getAmountDue } from '../utils/duePayments';
+import { getAmountDue, calendarDaysBetween } from '../utils/duePayments';
 import { generateId } from '../utils/id';
 import { colors, radii } from '../theme/tokens';
 
@@ -87,8 +87,7 @@ export default function PaymentRecorder({ loan, visible, paymentId, onSave, onCa
 
     const dueDate = new Date(targetPayment.dueDate);
     const paidDateObj = new Date(paidDate);
-    const delayMs = paidDateObj.getTime() - dueDate.getTime();
-    const delayDays = Math.max(0, Math.ceil(delayMs / (1000 * 60 * 60 * 24)));
+    const delayDays = Math.max(0, calendarDaysBetween(dueDate, paidDateObj));
 
     const dailyRate = (loan.interestRate / 100) / 30;
     const delayInterest = amt * dailyRate * delayDays;
